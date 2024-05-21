@@ -1,18 +1,18 @@
 
-model:  MLP-single-tracer
+model:  MLP_single_tracer
 
-input_cosmo_params : 3
-input_nuisance_params : 1 # The number of nuisance parameters per tracer
+num_cosmo_params : 3
+num_bias_params  : 1 # The number of nuisance parameters per tracer
 output_kbins : 20
 
 num_tracers: 1
 z_eff: [0.1]
 
 num_mlp_blocks      : 1
+mlp_dims            : [5, 20]
 num_block_layers    : 3
 use_batchnorm       : True
 use_skip_connection : True
-mlp_dims            : [5, 20]
 
 # Training parameters
 num_epochs: 300

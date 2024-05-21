@@ -4,7 +4,7 @@ from torch.nn import functional as F
 import numpy as np
 import yaml
 
-import spherex_emu.models.network_single_tracer as network_single_tracer
+from spherex_emu.models.single_tracer import MLP_single_tracer
 from spherex_emu.utils import load_config_file
 
 class pk_emulator():
@@ -32,7 +32,7 @@ class pk_emulator():
     def _init_model(self):
         """Initializes the network"""
         if self.config_dict.model == "MLP_single_tracer":
-            self.model = network_single_tracer(self.config_dict)
+            self.model = MLP_single_tracer(self.config_dict)
         else:
             print("ERROR: Invalid value for model")
             return -1
