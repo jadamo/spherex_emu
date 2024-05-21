@@ -12,6 +12,7 @@ setup(
                       "numpy",
                       "scipy",
                       "torch",
-                      "camb"
+                      "camb",
+                      "easydict"
     ],
 )
