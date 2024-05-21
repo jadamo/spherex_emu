@@ -19,8 +19,5 @@ def load_config_file(config_file:str):
     if len(config_dict.mlp_dims) != config_dict.num_mlp_blocks + 1:
         print("ERROR! mlp dimensions not formatted correctly!")
         return None
-    if len(config_dict.parameter_bounds) != config_dict.input_dim:
-        print("ERROR! parameter bounds not formatted correctly!")
-        return None
     
     return config_dict
