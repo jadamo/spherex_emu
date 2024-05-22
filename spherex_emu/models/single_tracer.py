@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-import numpy as np
 
 import spherex_emu.models.blocks as blocks
 
@@ -10,6 +9,8 @@ class MLP_single_tracer(nn.Module):
     def __init__(self, config_dict):
         super().__init__()
         #self.config_dict = config_dict
+
+        output_dim = config_dict.output_kbins * 2
 
         self.h1 = nn.Linear(config_dict.num_cosmo_params + config_dict.num_bias_params,
                             config_dict.mlp_dims[0])
@@ -20,7 +21,7 @@ class MLP_single_tracer(nn.Module):
                                         config_dict.mlp_dims[i+1],
                                         config_dict.num_block_layers,
                                         config_dict.use_skip_connection))
-        self.h2 = nn.Linear(config_dict.mlp_dims[-1], config_dict.output_kbins)
+        self.h2 = nn.Linear(config_dict.mlp_dims[-1], output_dim)
 
     def forward(self, X):
     
