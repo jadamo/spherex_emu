@@ -8,7 +8,6 @@ class MLP_single_tracer(nn.Module):
 
     def __init__(self, config_dict):
         super().__init__()
-        #self.config_dict = config_dict
 
         output_dim = config_dict.output_kbins * 2
 

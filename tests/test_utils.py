@@ -1,0 +1,39 @@
+import torch
+
+from spherex_emu.utils import *
+
+def test_symmetric_log():
+
+    # first test that this works for all positive values
+    test_tensor_all_positive = torch.rand(10, 10) * 100
+
+    log_tensor = symmetric_log(test_tensor_all_positive)
+    unlog_tensor = symmetric_exp(log_tensor)
+
+    assert torch.allclose(test_tensor_all_positive, unlog_tensor)
+
+    # now test that it works for a mix of positive and negative values
+    test_tensor = (torch.rand(5, 50) * 100) - 50
+
+    log_tensor = symmetric_log(test_tensor)
+    unlog_tensor = symmetric_exp(log_tensor)
+
+    assert torch.allclose(test_tensor, unlog_tensor)
+
+def test_organize_params():
+
+    test_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    test_dir+="/configs/example.yaml"
+
+    config_dict = load_config_file(test_dir)
+
+    params, priors = organize_parameters(config_dict)
+
+    expected_params = ["As", "fnl", "h", "omega_c", "b1"]
+    expected_priors = np.array([[1.2e-9, 2.7e-9],
+                                [-50, 50],
+                                [0.4, 1.0],
+                                [0.05, 0.3],
+                                [1., 4.]])
+    assert expected_params == params
+    assert np.all(np.equal(expected_priors, priors))
