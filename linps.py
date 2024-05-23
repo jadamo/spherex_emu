@@ -3,6 +3,7 @@
 import numpy as np
 #import pandas as pd
 import scipy.stats as sp # for calculating standard error
+import multiprocessing
 from math import cos, exp, pi
 from scipy.integrate import quad, quad_vec
 from scipy import interpolate
@@ -16,6 +17,8 @@ from pyDOE import lhs
 import time
 
 from gpsclass import CalcGalaxyPowerSpec
+from lhc import create_lhs_samples
+#import out
 
 #Galaxy Bias Parameter
 bias = np.array([1.9,-0.6,(-4./7)*(1.9-1),(32./315.)*(1.9-1)])
@@ -26,15 +29,6 @@ prior = np.array([[20,100], #H0
                   [0.1,.3], #omega_c
                   [1.2e-9,2.7e-9], #As
                   [0.8,1.2]]) #ns
-
-#Number of cosmo params in prior array
-n_dim = 5
-
-#g: inputs number of wanted samples and prior array to output number of samples with randomly set cosmology from prior
-def create_lhs_samples(n_samples , prior):
-    lhs_samples = lhs(n_dim, n_samples) #creates lhc with values 0 to 1
-    cosmo_samples = prior[:,0] + (prior[:,1] - prior[:,0]) * lhs_samples #scales each value to the given priors
-    return cosmo_samples
 
 #Creates linear power spectra from priors - input into galaxy ps class
 def get_linps(params):
@@ -60,28 +54,28 @@ def get_linps(params):
         psq[row] = ps_nonlin_quad #(pk[2])
     return params[row], k[0], psm[0], psq[0] #karray, Psnonlin = get_linps(params)
 
+#Parallelizing linps
+
+with multiprocessing.Pool() as pool:
+	results = pool.map(get_linps, create_lhs_samples(x, prior))
+
+
 #Number of PS to Generate
 x = 1
 
-out_param, out_k, out_psm, out_psq = get_linps(create_lhs_samples(x,prior))
-#out_k = get_linps(create_lhs_samples(x,prior))[1]
-#out_ps = get_linps(create_lhs_samples(x,prior))[2]
+out_param, out_k, out_psm, out_psq = results
 
-#out = get_linps(create_lhs_samples(x,prior))
+np.save(out,params=out_param,psm=out_psm,psq=out_psq)
 
-f = open("trainingset.txt", "a")
-f.write("\n")
-#f.write(str(out)) OUTPUTS (ARRAY), (ARRAY), (ARRAY)
-f.write(str(out_param))
-#f.write(str(out_k))
-f.write(str(out_psm))
-f.write(str(out_psq))
-f.close()
+#prints parameters, mono ps, quad ps on new line in text file
+#f = open("trainingset.txt", "a")
+#f.write("\n")
+#f.write(str(out_param))
+#f.write(str(out_psm))
+#f.write(str(out_psq))
+#f.close()
 
-g = open("ktraining.txt", "w")
-g.write(str(out_k))
-g.close()
-
-
-
-#print("Params:", params, "\nK Values:", k_array, "\nPower Spectrum Values:", p_array)
+#prints k modes into text file
+#g = open("ktraining.txt", "w")
+#g.write(str(out_k))
+#g.close()
