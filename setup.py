@@ -13,7 +13,6 @@ setup(
                       "scipy",
                       "torch",
                       "camb",
-                      "easydict",
                       "pytest",
                       "pyyaml"
     ],

@@ -34,7 +34,7 @@ bias_list = ['b1', 'b2', 'bG2', 'bGamma3', 'bphi', 'bphid'] + \
 
 cosmo_params = {'h': 0.6736, 'omega_b': 0.02237, 'omega_c': 0.1200, 'As': 2.100e-9, 'ns': 0.9649, 'fnl':5.}
 bias_params  = {'b1':2., 'b2':-1., 'bG2':0.1, 'bGamma3':-0.1, 'bphi':5., 'bphid':10.,
-                   'c0':5., 'c2':10., 'c4':-5., 'cfog':5., 'P_shot':1., 'a0':0., 'a2':0.}
+                'c0':5., 'c2':10., 'c4':-5., 'cfog':5., 'P_shot':1., 'a0':0., 'a2':0.}
 
 
 k = np.linspace(0.01, 0.25, 25)
@@ -67,8 +67,8 @@ def prepare_ps_inputs(samples, params, config_dict):
             param_vector.append(cosmo_params[pname])
 
     # The below is a (unrealistic) case in which all tracers have the same nuisance parameter values.
-    for isample in range(config_dict.num_tracers):
-        for iz in range(config_dict.num_zbins):
+    for isample in range(config_dict["num_tracers"]):
+        for iz in range(config_dict["num_zbins"]):
             sub_vector = []
             for pname in bias_list:
                 #print(pname)
@@ -110,7 +110,7 @@ def main():
 
     samples = make_latin_hypercube(priors, N)
 
-    ps_config["redshift_list"] = config_dict.z_eff
+    ps_config["redshift_list"] = config_dict["z_eff"]
 
     print("Generating", str(N), "power spectra...")
     print("Number of redshift bins:", len(ps_config["redshift_list"]))

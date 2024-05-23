@@ -11,21 +11,22 @@ from spherex_emu.utils import load_config_file, calc_avg_loss, symmetric_exp
 class pk_emulator():
     """Class defining the neural network emulator."""
 
-    def __init__(self, config_file):
+    def __init__(self, config_file_path):
 
-        self.config_dict = load_config_file(config_file)
-        self.num_tracers = self.config_dict.num_tracers
-        self.num_zbins = self.config_dict.num_zbins
-        self.num_kbins = self.config_dict.output_kbins
+        self.config_dict = load_config_file(config_file_path)
+        self.num_tracers = self.config_dict["num_tracers"]
+        self.num_zbins   = self.config_dict["num_zbins"]
+        self.num_kbins   = self.config_dict["output_kbins"]
 
         self._init_model()
         self.model.apply(self._init_weights)
 
-    def load_model(self, path):
+    def load_trained_model(self, path=""):
         """loads the pre-trained layers from a file into the current model
         
         Args:
-            path: The directory+filename of the trained network to load
+            path: The directory+filename of the trained network to load. 
+            If blank, uses "save_dir" found in the object's config dictionary
         """
         # pre_trained_dict = torch.load(path+"network.params")
 
@@ -33,6 +34,7 @@ class pk_emulator():
         #     if name not in self.model.state_dict():
         #         continue
         #     self.model.state_dict()[name].copy_(param)
+        if path == "": path = self.config_dict["save_dir"]
         self.model.eval()
         self.model.load_state_dict(torch.load(path+'network.params', map_location=torch.device("cpu")))
 
@@ -49,7 +51,7 @@ class pk_emulator():
         best_loss = torch.inf
         epochs_since_update = 0
         t1 = time.time()
-        for epoch in range(self.config_dict.num_epochs):
+        for epoch in range(self.config_dict["num_epochs"]):
 
             self._train_one_epoch(train_loader)
             self.train_loss.append(calc_avg_loss(self.model, train_loader))
@@ -63,13 +65,12 @@ class pk_emulator():
                 epochs_since_update += 1
 
             print("Epoch : {:d}, avg train loss: {:0.3f}\t avg validation loss: {:0.3f}\t ({:0.0f})".format(epoch, self.train_loss[-1], self.valid_loss[-1], epochs_since_update))
-            if epochs_since_update > self.config_dict.early_stopping_epochs:
+            if epochs_since_update > self.config_dict["early_stopping_epochs"]:
                 print("Model has not impvored for {:0.0f} epochs. Initiating early stopping...".format(epochs_since_update))
                 break
 
         print("Best validation loss was {:0.3f} after {:0.0f} epochs".format(
                best_loss, epoch - epochs_since_update))
-
 
     def get_power_spectra(self, params):
         
@@ -86,7 +87,7 @@ class pk_emulator():
 
     def _init_model(self):
         """Initializes the network"""
-        if self.config_dict.model == "MLP_single_tracer":
+        if self.config_dict["model"] == "MLP_single_tracer":
             self.model = MLP_single_tracer(self.config_dict)
         else:
             print("ERROR: Invalid value for model")
@@ -99,21 +100,21 @@ class pk_emulator():
         Current options for initialization schemes are ["normal", "He", "xavier"]
         """
         if isinstance(m, nn.Linear):
-            if self.config_dict.weight_initialization == "He":
+            if self.config_dict["weight_initialization"] == "He":
                 nn.init.kaiming_uniform_(m.weight)
-            elif self.config_dict.weight_initialization == "normal":
+            elif self.config_dict["weight_initialization"] == "normal":
                 nn.init.normal_(m.weight, mean=0., std=0.1)
                 nn.init.zeros_(m.bias)
-            elif self.config_dict.weight_initialization == "xavier":
+            elif self.config_dict["weight_initialization"] == "xavier":
                 nn.init.xavier_normal_(m.weight)
             else: # if scheme is invalid, use normal initialization as a substitute
                 nn.init.normal_(m.weight, mean=0., std=0.1)
                 nn.init.zeros_(m.bias)
 
     def _set_optimizer(self):
-        if self.config_dict.optimizer == "Adam":
+        if self.config_dict["optimizer"] == "Adam":
             self.optimizer = torch.optim.Adam(self.model.parameters(), 
-                                              lr=self.config_dict.learning_rate[0])
+                                              lr=self.config_dict["learning_rate"][0])
         else:
             print("Error! Invalid optimizer type specified!")
 
@@ -121,18 +122,18 @@ class pk_emulator():
         """saves the current model state to file"""
         training_data = torch.vstack([ torch.Tensor(self.train_loss), 
                                       torch.Tensor(self.valid_loss)])
-        torch.save(training_data, self.config_dict.save_dir+"train_data.dat")
+        torch.save(training_data, self.config_dict["save_dir"]+"train_data.dat")
 
-        with open(self.config_dict.save_dir+'config.yaml', 'w') as outfile:
-            yaml.dump(dict(self.config_dict.items()), outfile, default_flow_style=False)
+        with open(self.config_dict["save_dir"]+'config.yaml', 'w') as outfile:
+            yaml.dump(dict(self.config_dict), outfile, default_flow_style=True)
 
-        torch.save(self.model.state_dict(), self.config_dict.save_dir+'network.params')
+        torch.save(self.model.state_dict(), self.config_dict["save_dir"]+'network.params')
 
     def _load_data(self, key, return_dataloader=True):
 
         if key in ["training", "validation", "testing"]:
-            data = pk_galaxy_dataset(self.config_dict.training_dir, key, 1.)
-            data_loader = torch.utils.data.DataLoader(data, batch_size=self.config_dict.batch_size, shuffle=True)
+            data = pk_galaxy_dataset(self.config_dict["training_dir"], key, 1.)
+            data_loader = torch.utils.data.DataLoader(data, batch_size=self.config_dict["batch_size"], shuffle=True)
             
             if return_dataloader: return data_loader
             else: return data

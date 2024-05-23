@@ -11,17 +11,12 @@ def load_config_file(config_file:str):
     Args:
         config_file: Config file path and name to laod
     """
-    with open(config_file, "r") as stream:
+    with open(config_file, "r") as file:
         try:
-            config_dict = EasyDict(yaml.safe_load(stream))
+            config_dict = yaml.load(file, Loader=yaml.FullLoader)
         except:
             print("ERROR! Couldn't read yaml file")
             return None
-        
-    # some basic checks that your config file has the correct formating    
-    if len(config_dict.mlp_dims) != config_dict.num_mlp_blocks + 1:
-        print("ERROR! mlp dimensions not formatted correctly!")
-        return None
     
     return config_dict
 
@@ -29,8 +24,8 @@ def organize_parameters(config_dict):
     """Organizes parameters found in the config dict into a standard form.
     TODO: Update to handle multiple redshift bins / tracers"""
 
-    cosmo_params = dict(sorted(config_dict.cosmo_params.items()))
-    bias_params = dict(sorted(config_dict.bias_params.items()))
+    cosmo_params = dict(sorted(config_dict["cosmo_params"].items()))
+    bias_params = dict(sorted(config_dict["bias_params"].items()))
 
     params_dict = {**cosmo_params, **bias_params}
 
