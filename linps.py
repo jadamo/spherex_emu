@@ -10,7 +10,7 @@ from scipy import interpolate
 from scipy import integrate
 from scipy.special import eval_legendre
 from fastpt import FASTPT
-import camb
+import camb/home/u14/gibbins/spherex_emu
 from camb import model
 import pyDOE
 from pyDOE import lhs
@@ -59,13 +59,12 @@ def get_linps(params):
 with multiprocessing.Pool() as pool:
 	results = pool.map(get_linps, create_lhs_samples(x, prior))
 
-
 #Number of PS to Generate
 x = 1
 
 out_param, out_k, out_psm, out_psq = results
 
-np.save(out,params=out_param,psm=out_psm,psq=out_psq)
+np.savez("/home/u14/gibbins/spherex_emu/out.npz",params=out_param,psm=out_psm,psq=out_psq)
 
 #prints parameters, mono ps, quad ps on new line in text file
 #f = open("trainingset.txt", "a")
