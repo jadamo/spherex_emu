@@ -6,7 +6,7 @@ import yaml, time
 
 from spherex_emu.models.single_tracer import MLP_single_tracer
 from spherex_emu.dataset import pk_galaxy_dataset
-from spherex_emu.utils import load_config_file, calc_avg_loss
+from spherex_emu.utils import load_config_file, calc_avg_loss, symmetric_exp
 
 class pk_emulator():
     """Class defining the neural network emulator."""
@@ -14,12 +14,27 @@ class pk_emulator():
     def __init__(self, config_file):
 
         self.config_dict = load_config_file(config_file)
+        self.num_tracers = self.config_dict.num_tracers
+        self.num_zbins = self.config_dict.num_zbins
+        self.num_kbins = self.config_dict.output_kbins
 
         self._init_model()
         self.model.apply(self._init_weights)
 
-    def load_model(self):
-        """Loads pre-trained network"""
+    def load_model(self, path):
+        """loads the pre-trained layers from a file into the current model
+        
+        Args:
+            path: The directory+filename of the trained network to load
+        """
+        # pre_trained_dict = torch.load(path+"network.params")
+
+        # for name, param in pre_trained_dict.items():
+        #     if name not in self.model.state_dict():
+        #         continue
+        #     self.model.state_dict()[name].copy_(param)
+        self.model.eval()
+        self.model.load_state_dict(torch.load(path+'network.params', map_location=torch.device("cpu")))
 
     def train(self):
         """Trains the network"""
@@ -37,6 +52,7 @@ class pk_emulator():
         for epoch in range(self.config_dict.num_epochs):
 
             self._train_one_epoch(train_loader)
+            self.train_loss.append(calc_avg_loss(self.model, train_loader))
             self.valid_loss.append(calc_avg_loss(self.model, valid_loader))
 
             if self.valid_loss[-1] < best_loss:
@@ -55,8 +71,14 @@ class pk_emulator():
                best_loss, epoch - epochs_since_update))
 
 
-    def get_pk(self, params):
-        print("hello!")
+    def get_power_spectra(self, params):
+        
+        params = torch.from_numpy(params).to(torch.float32)
+        params = params.view(1, params.shape[0])
+        pk = self.model.forward(params)
+        pk = pk.view(self.num_zbins, self.num_tracers, 2, self.num_kbins)
+        pk = symmetric_exp(pk).detach().numpy()
+        return pk
 
     # -----------------------------------------------------------
     # Helper methods: Not meant to be called by the user directly
@@ -70,8 +92,6 @@ class pk_emulator():
             print("ERROR: Invalid value for model")
             return -1
         
-        self.training_data = []
-
     def _init_weights(self, m):
         """Initializes weights using a specific scheme set in the input yaml file
         
@@ -104,16 +124,18 @@ class pk_emulator():
         torch.save(training_data, self.config_dict.save_dir+"train_data.dat")
 
         with open(self.config_dict.save_dir+'config.yaml', 'w') as outfile:
-            yaml.dump(dict(self.config_dict), outfile, default_flow_style=False)
+            yaml.dump(dict(self.config_dict.items()), outfile, default_flow_style=False)
 
         torch.save(self.model.state_dict(), self.config_dict.save_dir+'network.params')
 
-    def _load_data(self, key):
+    def _load_data(self, key, return_dataloader=True):
 
         if key in ["training", "validation", "testing"]:
             data = pk_galaxy_dataset(self.config_dict.training_dir, key, 1.)
             data_loader = torch.utils.data.DataLoader(data, batch_size=self.config_dict.batch_size, shuffle=True)
-            return data_loader
+            
+            if return_dataloader: return data_loader
+            else: return data
 
     def _train_one_epoch(self, train_loader):
         """basic training loop"""
@@ -133,6 +155,6 @@ class pk_emulator():
             self.optimizer.step()
             total_loss += loss
         
-        self.train_loss.append(total_loss / len(train_loader))
+        #self.train_loss.append(total_loss / len(train_loader))
 
     

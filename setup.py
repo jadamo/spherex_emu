@@ -14,6 +14,7 @@ setup(
                       "torch",
                       "camb",
                       "easydict",
-                      "pytest"
+                      "pytest",
+                      "pyyaml"
     ],
 )

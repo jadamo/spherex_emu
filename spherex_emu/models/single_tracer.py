@@ -24,9 +24,9 @@ class MLP_single_tracer(nn.Module):
 
     def forward(self, X):
     
-        X = F.relu(self.h1(X))
+        X = F.leaky_relu(self.h1(X))
         for block in self.mlp_blocks:
-            X = F.relu(block(X))
-        X = F.relu(self.h2(X))
+            X = F.leaky_relu(block(X))
+        X = F.leaky_relu(self.h2(X))
         return X
 

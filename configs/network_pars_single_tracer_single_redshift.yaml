@@ -24,9 +24,9 @@ use_batchnorm       : True
 use_skip_connection : True
 
 # Training parameters
-num_epochs: 300
+num_epochs: 350
 learning_rate: [1.0e-3]
-batch_size: 25
+batch_size: 50
 early_stopping_epochs: 25
 weight_initialization: He
 optimizer : Adam

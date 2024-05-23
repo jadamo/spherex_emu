@@ -11,12 +11,12 @@ class block_resnet(nn.Module):
         super().__init__()
 
         self.layers = nn.Sequential()
-        self.layers.add_module("layer0", nn.Linear(input_dim, output_dim))
-        self.layers.add_module("RelU",   nn.ReLU())
+        self.layers.add_module("layer0",    nn.Linear(input_dim, output_dim))
+        self.layers.add_module("LeakyReLU", nn.LeakyReLU())
         for i in range(num_layers-1):
             self.layers.add_module("layer"+str(i+1), nn.Linear(output_dim, output_dim))
             self.layers.add_module("bn"+str(i+1),    nn.BatchNorm1d(output_dim))
-            self.layers.add_module("ReLU",           nn.ReLU())
+            self.layers.add_module("LeakyReLU",      nn.LeakyReLU())
     
         if skip_connection:
             self.skip_layer = nn.Linear(input_dim, output_dim)
