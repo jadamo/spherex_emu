@@ -2,11 +2,11 @@ import pytest, os
 import torch
 
 import spherex_emu.emulator as emulator
+from spherex_emu.filepaths import net_config_dir
 
 def test_single_tracer_network():
 
-    test_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-    test_dir+="/configs/example.yaml"
+    test_dir = net_config_dir + "example.yaml"
 
     # constructes the network
     test_emulator = emulator.pk_emulator(test_dir)

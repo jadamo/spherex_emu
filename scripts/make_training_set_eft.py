@@ -9,6 +9,7 @@ from itertools import repeat
 
 import ps_theory_calculator
 from spherex_emu.utils import *
+from spherex_emu.filepaths import net_config_dir
 
 #-------------------------------------------------------------------
 # GLOBAL VARIABLES
@@ -49,7 +50,7 @@ test_frac  = 0.1
 
 #home_dir = "/home/u12/jadamo/CovNet/Training-Set-HighZ-NGC/"
 
-config_dir = "/home/joeadamo/Research/SPHEREx/spherex_emu/configs/example.yaml"
+config_dir = net_config_dir+"example.yaml"
 save_dir = "/home/joeadamo/Research/Data/SPHEREx-Data/Training-Set-EFT/"
 
 #-------------------------------------------------------------------

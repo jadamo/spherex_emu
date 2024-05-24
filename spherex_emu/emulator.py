@@ -6,7 +6,7 @@ import yaml, time
 
 from spherex_emu.models.single_tracer import MLP_single_tracer
 from spherex_emu.dataset import pk_galaxy_dataset
-from spherex_emu.utils import load_config_file, calc_avg_loss, symmetric_exp
+from spherex_emu.utils import load_config_file, calc_avg_loss, symmetric_exp, un_normalize
 
 class pk_emulator():
     """Class defining the neural network emulator."""
@@ -40,36 +40,42 @@ class pk_emulator():
 
     def train(self):
         """Trains the network"""
-        train_loader = self._load_data("training")
+        train_loader = self._load_data("training", self.config_dict["training_set_fraction"])
         valid_loader = self._load_data("validation")
 
         self.train_loss = []
         self.valid_loss = []
-
-        self._set_optimizer()
-
         best_loss = torch.inf
-        epochs_since_update = 0
-        t1 = time.time()
-        for epoch in range(self.config_dict["num_epochs"]):
 
-            self._train_one_epoch(train_loader)
-            self.train_loss.append(calc_avg_loss(self.model, train_loader))
-            self.valid_loss.append(calc_avg_loss(self.model, valid_loader))
+        # loop thru training rounds
+        for round in range(len(self.config_dict["learning_rate"])):
+            print("Round {:0.0f}, initial learning rate = {:0.2e}".format(
+                   round, self.config_dict["learning_rate"][round]))
+            
+            if round != 0: self.load_trained_model()
+            self._set_optimizer(round)
 
-            if self.valid_loss[-1] < best_loss:
-                best_loss = self.valid_loss[-1]
-                self._save_model()
-                epochs_since_update = 0
-            else:
-                epochs_since_update += 1
+            # loop thru epochs
+            epochs_since_update = 0
+            for epoch in range(self.config_dict["num_epochs"]):
 
-            print("Epoch : {:d}, avg train loss: {:0.3f}\t avg validation loss: {:0.3f}\t ({:0.0f})".format(epoch, self.train_loss[-1], self.valid_loss[-1], epochs_since_update))
-            if epochs_since_update > self.config_dict["early_stopping_epochs"]:
-                print("Model has not impvored for {:0.0f} epochs. Initiating early stopping...".format(epochs_since_update))
-                break
+                self._train_one_epoch(train_loader)
+                self.train_loss.append(calc_avg_loss(self.model, train_loader))
+                self.valid_loss.append(calc_avg_loss(self.model, valid_loader))
 
-        print("Best validation loss was {:0.3f} after {:0.0f} epochs".format(
+                if self.valid_loss[-1] < best_loss:
+                    best_loss = self.valid_loss[-1]
+                    self._save_model()
+                    epochs_since_update = 0
+                else:
+                    epochs_since_update += 1
+
+                print("Epoch : {:d}, avg train loss: {:0.3f}\t avg validation loss: {:0.3f}\t ({:0.0f})".format(epoch, self.train_loss[-1], self.valid_loss[-1], epochs_since_update))
+                if epochs_since_update > self.config_dict["early_stopping_epochs"]:
+                    print("Model has not impvored for {:0.0f} epochs. Initiating early stopping...".format(epochs_since_update))
+                    break
+
+        print("\nBest validation loss was {:0.3f} after {:0.0f} epochs".format(
                best_loss, epoch - epochs_since_update))
 
     def get_power_spectra(self, params):
@@ -78,7 +84,7 @@ class pk_emulator():
         params = params.view(1, params.shape[0])
         pk = self.model.forward(params)
         pk = pk.view(self.num_zbins, self.num_tracers, 2, self.num_kbins)
-        pk = symmetric_exp(pk).detach().numpy()
+        pk = un_normalize(pk, self.config_dict["min_norm_v"], self.config_dict["max_norm_v"]).detach().numpy()
         return pk
 
     # -----------------------------------------------------------
@@ -111,10 +117,10 @@ class pk_emulator():
                 nn.init.normal_(m.weight, mean=0., std=0.1)
                 nn.init.zeros_(m.bias)
 
-    def _set_optimizer(self):
+    def _set_optimizer(self, round):
         if self.config_dict["optimizer"] == "Adam":
             self.optimizer = torch.optim.Adam(self.model.parameters(), 
-                                              lr=self.config_dict["learning_rate"][0])
+                                              lr=self.config_dict["learning_rate"][round])
         else:
             print("Error! Invalid optimizer type specified!")
 
@@ -129,10 +135,11 @@ class pk_emulator():
 
         torch.save(self.model.state_dict(), self.config_dict["save_dir"]+'network.params')
 
-    def _load_data(self, key, return_dataloader=True):
+    def _load_data(self, key, data_frac=1.0, return_dataloader=True):
 
         if key in ["training", "validation", "testing"]:
-            data = pk_galaxy_dataset(self.config_dict["training_dir"], key, 1.)
+            data = pk_galaxy_dataset(self.config_dict["training_dir"], key, data_frac,
+                                     self.config_dict["min_norm_v"], self.config_dict["max_norm_v"])
             data_loader = torch.utils.data.DataLoader(data, batch_size=self.config_dict["batch_size"], shuffle=True)
             
             if return_dataloader: return data_loader

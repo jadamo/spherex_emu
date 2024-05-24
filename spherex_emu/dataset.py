@@ -3,12 +3,15 @@ import torch
 from torch.nn import functional as F
 import numpy as np
 
-from spherex_emu.utils import symmetric_log, symmetric_exp
+from spherex_emu.utils import symmetric_log, symmetric_exp, normalize, un_normalize
 
 class pk_galaxy_dataset(torch.utils.data.Dataset):
 
-    def __init__(self, data_dir:str, type:str, frac=1.):
+    def __init__(self, data_dir:str, type:str, frac=1.,
+                 min_norm_v = -1, max_norm_v = -1):
         
+        self.min_norm_v = min_norm_v
+        self.max_norm_v = max_norm_v
         self._load_data(data_dir, type, frac)
 
     def _load_data(self, data_dir, type, frac):
@@ -31,8 +34,8 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self.num_ells = self.pk.shape[3]
         self.num_kbins = self.pk.shape[4]
 
+        self.pk = normalize(self.pk, self.min_norm_v, self.max_norm_v)
         self.pk = self.pk.view(-1, self.num_zbins * self.num_tracers * self.num_ells * self.num_kbins)
-        self.pk = symmetric_log(self.pk)
 
         if frac != 1.:
             N_frac = int(self.params.shape[0] * frac)
@@ -44,9 +47,9 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
     
     def __getitem__(self, idx):
         return self.params[idx], self.pk[idx]
-    
+
     def get_power_spectra(self, idx):
         
         pk = self.pk[idx].view(self.num_zbins, self.num_tracers, self.num_ells, self.num_kbins)
-        pk = symmetric_exp(pk).detach().numpy()
+        pk = un_normalize(pk, self.min_norm_v, self.max_norm_v).detach().numpy()
         return pk

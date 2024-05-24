@@ -117,6 +117,12 @@ def calc_avg_loss(net, data_loader):
     avg_loss /= len(data_loader)
     return avg_loss
 
+def normalize(X, min_v, max_v):
+    return (X - min_v) / (max_v - min_v)
+
+def un_normalize(X, min_v, max_v):
+    return (X * (max_v - min_v)) + min_v
+
 def symmetric_log(m):
     """Takes an input tensor and returns the normalized piece-wise logarithm 
     

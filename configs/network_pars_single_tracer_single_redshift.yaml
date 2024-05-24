@@ -17,19 +17,24 @@ num_tracers : 1
 num_zbins   : 1
 z_eff: [0.5]
 
-num_mlp_blocks      : 1
-mlp_dims            : [10, 40]
+num_mlp_blocks      : 2
+mlp_dims            : [20, 40, 50]
 num_block_layers    : 3
 use_batchnorm       : True
 use_skip_connection : True
 
 # Training parameters
 num_epochs: 350
-learning_rate: [1.0e-3]
+learning_rate: [1.0e-3, 1.0e-4]
 batch_size: 50
+training_set_fraction : 1.0
 early_stopping_epochs: 25
 weight_initialization: He
 optimizer : Adam
+
+# Data parameters
+min_norm_v : -10000.
+max_norm_v :  70000.
 
 # Where to save the network
 save_dir: /home/joeadamo/Research/SPHEREx/spherex_emu/emulators/mlp_single_tracer/

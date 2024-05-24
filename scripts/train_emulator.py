@@ -1,9 +1,10 @@
 from spherex_emu.emulator import pk_emulator
+from spherex_emu.filepaths import net_config_dir
 import math, time
 
 def main():
 
-    config_file = "/home/joeadamo/Research/SPHEREx/spherex_emu/configs/example.yaml"
+    config_file = net_config_dir + "network_pars_single_tracer_single_redshift.yaml"
 
     t1 = time.time()
     emulator = pk_emulator(config_file)
