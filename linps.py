@@ -22,8 +22,16 @@ from lhc import create_lhs_samples
 
 
 #Galaxy Bias Parameter
-bias_tracer1 = np.array([1.9,-0.6,(-4./7)*(1.9-1),(32./315.)*(1.9-1)])
-bias_tracer2 = np.array([1.9,-0.6,(-4./7)*(1.9-1),(32./315.)*(1.9-1)])
+bias = np.array([[1.9,-0.6,(-4./7)*(1.9-1),(32./315.)*(1.9-1)],
+                [1.9,-0.6,(-4./7)*(1.9-1),(32./315.)*(1.9-1)]])
+
+ntracers = 1
+
+nsamples = int(ntracers*(ntracers+1)/2)
+
+print(nsamples)
+
+npoints = 10
 
 #Cosmo Parameters
 prior = np.array([[20,100], #H0
@@ -33,8 +41,8 @@ prior = np.array([[20,100], #H0
                   [0.8,1.2]]) #ns
 
 #Creates linear power spectra from priors - input into galaxy ps class
-def get_linps(params):
-    npoints = 10 #number of ps/k values: smallest possible is four & need to be even numbers
+def get_linps(params,bias1,bias2,npoints):
+    #npoints = 10 #number of ps/k values: smallest possible is four & need to be even numbers
     psm = np.zeros((len(params[:,0]),npoints)) #number of samples x number of k bins
     psq = np.zeros((len(params[:,0]),npoints))
     k = np.zeros((len(params[:,0]),npoints)) #number of samples x number of k bins
@@ -48,7 +56,7 @@ def get_linps(params):
         results = camb.get_results(pars)
         kh, z, pk = results.get_matter_power_spectrum(minkh=1e-3, maxkh=.2, npoints=npoints) #pk is 2 values 
         f = .7 #####PLACEHOLDER
-        nonlin = CalcGalaxyPowerSpec(f,pk[0],kh,bias_tracer1,bias_tracer2,params[row])
+        nonlin = CalcGalaxyPowerSpec(f,pk[0],kh,bias1,bias2,params[row])
         ps_nonlin_mono = nonlin.get_nonlinear_ps(0)
         ps_nonlin_quad = nonlin.get_nonlinear_ps(2)
         k[row] = (kh)
@@ -65,15 +73,24 @@ x = 1
 # 	results = pool.map(get_linps, create_lhs_samples(x, prior))
 
 params_test = np.array([[6.22954856e+01, 5.88608308e-01, 1.78577808e-01, 2.01059374e-09, 1.11635806e+00]])
-print((create_lhs_samples(x, prior)))
+# print((create_lhs_samples(x, prior)))
 # results = get_linps(create_lhs_samples(x, prior))
 
-results = get_linps(params_test)
+out_param = np.zeros((nsamples,prior[:,0].size))
+out_k = np.zeros((nsamples,npoints))
+out_psm = np.zeros((nsamples,npoints))
+out_psq = np.zeros((nsamples,npoints))
+
+l=0
+for j in range(ntracers):
+    for k in range(j,ntracers):
+        out_param[l,:], out_k[l,:], out_psm[l,:], out_psq[l,:] = get_linps(params_test,bias[j,:],bias[k,:],npoints)
+        l+=1
 
 
-print(results)
+print(print(out_psm))
 
-out_param, out_k, out_psm, out_psq = results
+#out_param, out_k, out_psm, out_psq = results
 
 np.savez("/Users/anniemoore/desktop/out.npz",params=out_param,psm=out_psm,psq=out_psq)
 
