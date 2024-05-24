@@ -30,8 +30,7 @@ ntracers = 2
 
 nsamples = int(ntracers*(ntracers+1)/2)
 
-print(nsamples)
-
+#now will pass into linps function. Used when defining shape of arrays
 npoints = 10
 
 #Cosmo Parameters
@@ -70,29 +69,27 @@ x = 1
 
 #Parallelizing linps
 
-# with multiprocessing.Pool() as pool:
-# 	results = pool.map(get_linps, create_lhs_samples(x, prior))
+with multiprocessing.Pool() as pool:
+	results = pool.map(get_linps, create_lhs_samples(x, prior))
 
-params_test = np.array([[6.22954856e+01, 5.88608308e-01, 1.78577808e-01, 2.01059374e-09, 1.11635806e+00]])
-# print((create_lhs_samples(x, prior)))
-# results = get_linps(create_lhs_samples(x, prior))
-
+#Don't save output of get_linps to results, then to these arrays
+#instead, I save the output directly to the arrays
+#might not be the best idea but I got it to work
 out_param = np.zeros((nsamples,prior[:,0].size))
 out_k = np.zeros((nsamples,npoints))
 out_psm = np.zeros((nsamples,npoints))
 out_psq = np.zeros((nsamples,npoints))
 
+
+#loop over the different combinations of tracers
+#will find the power spectrum for every cosmology at a particular tracer combination
 l=0
 for j in range(ntracers):
     for k in range(j,ntracers):
-        out_param[l,:], out_k[l,:], out_psm[l,:], out_psq[l,:] = get_linps(params_test,bias[j,:],bias[k,:],npoints)
+        out_param[l,:], out_k[l,:], out_psm[l,:], out_psq[l,:] = get_linps(create_lhs_samples(x, prior),bias[j,:],bias[k,:],npoints)
         l+=1
 
-
-print(print(out_psm))
-
-#out_param, out_k, out_psm, out_psq = results
-
+#Sorry, I changed this
 np.savez("/Users/anniemoore/desktop/out.npz",params=out_param,psm=out_psm,psq=out_psq)
 
 #prints parameters, mono ps, quad ps on new line in text file
