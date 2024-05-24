@@ -23,9 +23,10 @@ from lhc import create_lhs_samples
 
 #Galaxy Bias Parameter
 bias = np.array([[1.9,-0.6,(-4./7)*(1.9-1),(32./315.)*(1.9-1)],
-                [1.9,-0.6,(-4./7)*(1.9-1),(32./315.)*(1.9-1)]])
+                [1.,-0.6,(-4./7)*(1.-1),(32./315.)*(1.-1)]])
 
-ntracers = 1
+
+ntracers = 2
 
 nsamples = int(ntracers*(ntracers+1)/2)
 
