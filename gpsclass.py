@@ -73,7 +73,7 @@ class CalcGalaxyPowerSpec:
         #    $\delta_{g,b}$ = b1b * $\delta^(1)$ + b2b/2. * $\delta^(2)$ + ...
         # So < $\delta_{g,a}\delta_{g,b}$ >  = b1a*b1b $\delta^(1)\delta^(1)$ + b1a
         Pgg_d = ((self.b1a*self.b1b) * (self.P_lin+one_loopkz_d)
-               + 0.5*(self.b1a*self.b2b + self.b1b+self.b2a)*Pd1d2_d + 
+               + 0.5*(self.b1a*self.b2b + self.b1b*self.b2a)*Pd1d2_d + 
                (1./4.)*(self.b2a*self.b2b)*(Pd2d2_d - 2.*sig4kz)
                + 0.5*(self.b1a*self.bsb+self.b1b*self.bsa)*Pd1s2_d + 
                (1./4.)*(self.b2a*self.bsb+self.b2b*self.bsa)*(Pd2s2_d - 4./3*sig4kz)
