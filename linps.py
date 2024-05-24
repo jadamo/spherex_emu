@@ -59,6 +59,33 @@ def get_linps(params):
 #Number of PS to Generate
 x = 1
 
-#out_param, out_k, out_psm, out_psq = results
+#Parallelizing linps
 
-#np.savez("/home/u14/gibbins/spherex_emu/out.npz",params=out_param,psm=out_psm,psq=out_psq)
+# with multiprocessing.Pool() as pool:
+# 	results = pool.map(get_linps, create_lhs_samples(x, prior))
+
+params_test = np.array([[6.22954856e+01, 5.88608308e-01, 1.78577808e-01, 2.01059374e-09, 1.11635806e+00]])
+print((create_lhs_samples(x, prior)))
+# results = get_linps(create_lhs_samples(x, prior))
+
+results = get_linps(params_test)
+
+
+print(results)
+
+out_param, out_k, out_psm, out_psq = results
+
+np.savez("/Users/anniemoore/desktop/out.npz",params=out_param,psm=out_psm,psq=out_psq)
+
+#prints parameters, mono ps, quad ps on new line in text file
+#f = open("trainingset.txt", "a")
+#f.write("\n")
+#f.write(str(out_param))
+#f.write(str(out_psm))
+#f.write(str(out_psq))
+#f.close()
+
+#prints k modes into text file
+#g = open("ktraining.txt", "w")
+#g.write(str(out_k))
+#g.close()
