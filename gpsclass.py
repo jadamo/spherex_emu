@@ -10,7 +10,8 @@ from camb import model
 
 #Calculates Galaxy PS from Linear PS
 class CalcGalaxyPowerSpec:
-    def __init__(self,fz,Plin,karray,galaxyBias,cosmoParams):
+    #modified input to take galaxy bias values from two tracer bins
+    def __init__(self,fz,Plin,karray,galaxyBiasTracer1,galaxyBiasTracer2,cosmoParams):
         #Define linear matter power spectrum and k array generated from CAMB
         self.fz = fz
         self.P_lin  = Plin
@@ -23,7 +24,14 @@ class CalcGalaxyPowerSpec:
         
         #assign values of bias parameters from bias array
         #linear bias, quadratic bias, tidal bias, non-local bias
-        self.b1, self.b2, self.bs, self.b3nl = galaxyBias
+
+        #will save bias values from both tracer bins
+        #self.b1a --> tracer1 and self.b1b --> tracer2
+        self.b1a, self.b2a, self.bsa, self.b3nla = galaxyBiasTracer1
+        self.b1b, self.b2b, self.bsb, self.b3nlb = galaxyBiasTracer2
+
+        print(self.b1a)
+        print(self.b1b)
         
         #computes FASTPT Grid. Needing for following power spectra calculations
         # initialize the FASTPT class
@@ -60,12 +68,16 @@ class CalcGalaxyPowerSpec:
         c=299726.
 
         #density-density galaxy power spectrum
-        Pgg_d = (self.b1**2 * (self.P_lin+one_loopkz_d)
-               + self.b1*self.b2*Pd1d2_d + 
-               (1./4)*self.b2*self.b2*(Pd2d2_d - 2.*sig4kz)
-               + self.b1*self.bs*Pd1s2_d + 
-               (1./2)*self.b2*self.bs*(Pd2s2_d - 4./3*sig4kz)
-               + (1./4)*self.bs*self.bs*(Ps2s2_d - 8./9*sig4kz) + (self.b1*self.b3nl)*sig3nl)
+        #For multi-tracer, need to include bias from both bins when computing the galaxy ps
+        #Ex: $\delta_{g,a}$ = b1a * $\delta^(1)$ + b2a/2. * $\delta^(2)$ + ...
+        #    $\delta_{g,b}$ = b1b * $\delta^(1)$ + b2b/2. * $\delta^(2)$ + ...
+        # So < $\delta_{g,a}\delta_{g,b}$ >  = b1a*b1b $\delta^(1)\delta^(1)$ + b1a
+        Pgg_d = ((self.b1a*self.b1b) * (self.P_lin+one_loopkz_d)
+               + 0.5*(self.b1a*self.b2b + self.b1b+self.b2a)*Pd1d2_d + 
+               (1./4.)*(self.b2a*self.b2b)*(Pd2d2_d - 2.*sig4kz)
+               + 0.5*(self.b1a*self.bsb+self.b1b*self.bsa)*Pd1s2_d + 
+               (1./4.)*(self.b2a*self.bsb+self.b2b*self.bsa)*(Pd2s2_d - 4./3*sig4kz)
+               + (1./4)*(self.bsa*self.bsb)*(Ps2s2_d - 8./9*sig4kz) + 0.5*(self.b1a*self.b3nlb+self.b1b*self.b3nla)*sig3nl)
         
         ### VELOCITY CALCULATION ###
         
@@ -94,9 +106,9 @@ class CalcGalaxyPowerSpec:
         
         #density-velocity galaxy power spectrum
         #need factor of (a*67.*fz/c) to make units work
-        Pgg_c =  (self.b1*(self.P_lin+(a*self.H0*self.fz/c)*one_loopkz_c) 
-                   + (a*self.H0*self.fz/c)*(self.b2*Pd1d2_v + self.bs*Pd1s2_v) 
-                   + self.b3nl*sig3nl)
+        Pgg_c =  (0.5*(self.b1a+self.b1b)*(self.P_lin+(a*self.H0*self.fz/c)*one_loopkz_c) 
+                   + (a*self.H0*self.fz/c)*(0.5*(self.b2a+self.b2b)*Pd1d2_v + 0.5*(self.bsa+self.bsb)*Pd1s2_v) 
+                   + 0.5*(self.b3nla+self.b3nlb)*sig3nl)
         
         #kaiser = Pgg_d + 2.*f*x**2*Pgg_c + f**2*x**4*Pgg_v
         
@@ -107,21 +119,25 @@ class CalcGalaxyPowerSpec:
         """Calculate the TNS correction terms. These account for nonlinearities arising from coupling
            between the density and velocity fields"""
         
+        b1_sym = 0.5*(self.b1a+self.b1b)
         #Here I get the individual terms for the TNS corrections.
-        A1, A3, A5, B0, B2, B4, B6, P_Ap1, P_Ap3, P_Ap5 = self.fastpt.RSD_components(self.P_lin, self.fz/self.b1, P_window=None, C_window=0.65)
+        A1, A3, A5, B0, B2, B4, B6, P_Ap1, P_Ap3, P_Ap5 = self.fastpt.RSD_components(self.P_lin, self.fz/b1_sym, P_window=None, C_window=0.65)
         
         #These are found in the FAST-PT github under RSD.py
-        A_mu2 = self.k_vec*(self.fz/self.b1)*(A1 + P_Ap1)
-        A_mu4 = self.k_vec*(self.fz/self.b1)*(A3 + P_Ap3) 
-        A_mu6 = self.k_vec*(self.fz/self.b1)*(A5 + P_Ap5)
+        A_mu2 = self.k_vec*(self.fz/b1_sym)*(A1 + P_Ap1)
+        A_mu4 = self.k_vec*(self.fz/b1_sym)*(A3 + P_Ap3) 
+        A_mu6 = self.k_vec*(self.fz/b1_sym)*(A5 + P_Ap5)
 
-        B_mu2 = ((self.fz/self.b1)*self.k_vec)**2*B0
-        B_mu4 = ((self.fz/self.b1)*self.k_vec)**2*B2
-        B_mu6 = ((self.fz/self.b1)*self.k_vec)**2*B4
-        B_mu8 = ((self.fz/self.b1)*self.k_vec)**2*B6
+        B_mu2 = ((self.fz/b1_sym)*self.k_vec)**2*B0
+        B_mu4 = ((self.fz/b1_sym)*self.k_vec)**2*B2
+        B_mu6 = ((self.fz/b1_sym)*self.k_vec)**2*B4
+        B_mu8 = ((self.fz/b1_sym)*self.k_vec)**2*B6
         
         #return A_mu2, A_mu4, A_mu6, B_mu2, B_mu4, B_mu6, B_mu8
-        return (self.b1**3*A_mu2+self.b1**4*B_mu2)*x**2 + (self.b1**3*A_mu4+self.b1**4*B_mu4)*x**4 + (self.b1**3*A_mu6+self.b1**4*B_mu6)*x**6 + self.b1**4*B_mu8*x**8 
+        return ((b1_sym)**3*A_mu2+(b1_sym)**4*B_mu2)*x**2 \
+            + ((b1_sym)**3*A_mu4+(b1_sym)**4*B_mu4)*x**4 \
+            + ((b1_sym)**3*A_mu6+(b1_sym)**4*B_mu6)*x**6 \
+            + (b1_sym)**4*B_mu8*x**8 
     
     def get_FOG(self,x,sigv):
         """Describes effect of the velocity field on small scale galaxy clustering"""

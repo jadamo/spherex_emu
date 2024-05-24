@@ -21,7 +21,8 @@ from lhc import create_lhs_samples
 #import out
 
 #Galaxy Bias Parameter
-bias = np.array([1.9,-0.6,(-4./7)*(1.9-1),(32./315.)*(1.9-1)])
+bias_tracer1 = np.array([1.9,-0.6,(-4./7)*(1.9-1),(32./315.)*(1.9-1)])
+bias_tracer2 = np.array([1.9,-0.6,(-4./7)*(1.9-1),(32./315.)*(1.9-1)])
 
 #Cosmo Parameters
 prior = np.array([[20,100], #H0
@@ -46,7 +47,7 @@ def get_linps(params):
         results = camb.get_results(pars)
         kh, z, pk = results.get_matter_power_spectrum(minkh=1e-3, maxkh=.2, npoints=npoints) #pk is 2 values 
         f = .7 #####PLACEHOLDER
-        nonlin = CalcGalaxyPowerSpec(f,pk[0],kh,bias,params[row])
+        nonlin = CalcGalaxyPowerSpec(f,pk[0],kh,bias_tracer1,bias_tracer2,params[row])
         ps_nonlin_mono = nonlin.get_nonlinear_ps(0)
         ps_nonlin_quad = nonlin.get_nonlinear_ps(2)
         k[row] = (kh)
@@ -54,17 +55,21 @@ def get_linps(params):
         psq[row] = ps_nonlin_quad #(pk[2])
     return params[row], k[0], psm[0], psq[0] #karray, Psnonlin = get_linps(params)
 
-#Parallelizing linps
-
-with multiprocessing.Pool() as pool:
-	results = pool.map(get_linps, create_lhs_samples(x, prior))
-
 #Number of PS to Generate
 x = 1
 
-out_param, out_k, out_psm, out_psq = results
+#Parallelizing linps
 
-np.savez("/home/u14/gibbins/spherex_emu/out.npz",params=out_param,psm=out_psm,psq=out_psq)
+# with multiprocessing.Pool() as pool:
+# 	results = pool.map(get_linps, create_lhs_samples(x, prior))
+
+results = get_linps(create_lhs_samples(x, prior))
+
+print(results)
+
+# out_param, out_k, out_psm, out_psq = results
+
+#np.savez("/home/u14/gibbins/spherex_emu/out.npz",params=out_param,psm=out_psm,psq=out_psq)
 
 #prints parameters, mono ps, quad ps on new line in text file
 #f = open("trainingset.txt", "a")
