@@ -10,7 +10,7 @@ from scipy import interpolate
 from scipy import integrate
 from scipy.special import eval_legendre
 from fastpt import FASTPT
-import camb/home/u14/gibbins/spherex_emu
+import camb#/home/u14/gibbins/spherex_emu
 from camb import model
 import pyDOE
 from pyDOE import lhs
