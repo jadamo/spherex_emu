@@ -3,23 +3,23 @@ import torch
 from spherex_emu.utils import *
 from spherex_emu.filepaths import net_config_dir
 
-def test_symmetric_log():
+# def test_symmetric_log():
 
-    # first test that this works for all positive values
-    test_tensor_all_positive = torch.rand(10, 10) * 100
+#     # first test that this works for all positive values
+#     test_tensor_all_positive = torch.rand(10, 10) * 100
 
-    log_tensor = symmetric_log(test_tensor_all_positive)
-    unlog_tensor = symmetric_exp(log_tensor)
+#     log_tensor = symmetric_log(test_tensor_all_positive)
+#     unlog_tensor = symmetric_exp(log_tensor)
 
-    assert torch.allclose(test_tensor_all_positive, unlog_tensor)
+#     assert torch.allclose(test_tensor_all_positive, unlog_tensor)
 
-    # now test that it works for a mix of positive and negative values
-    test_tensor = (torch.rand(5, 50) * 100) - 50
+#     # now test that it works for a mix of positive and negative values
+#     test_tensor = (torch.rand(5, 50) * 100) - 50
 
-    log_tensor = symmetric_log(test_tensor)
-    unlog_tensor = symmetric_exp(log_tensor)
+#     log_tensor = symmetric_log(test_tensor)
+#     unlog_tensor = symmetric_exp(log_tensor)
 
-    assert torch.allclose(test_tensor, unlog_tensor)
+#     assert torch.allclose(test_tensor, unlog_tensor)
 
 def test_normalize():
     test_tensor = (torch.rand(10*10) * 100) - 50

@@ -14,9 +14,10 @@ class pk_emulator():
     def __init__(self, config_file_path):
 
         self.config_dict = load_config_file(config_file_path)
-        self.num_tracers = self.config_dict["num_tracers"]
-        self.num_zbins   = self.config_dict["num_zbins"]
-        self.num_kbins   = self.config_dict["output_kbins"]
+        
+        # load dictionary entries into their own class variables
+        for key in self.config_dict:
+            setattr(self, key, self.config_dict[key])
 
         self._init_device()
         self._init_model()
@@ -35,13 +36,13 @@ class pk_emulator():
         #     if name not in self.model.state_dict():
         #         continue
         #     self.model.state_dict()[name].copy_(param)
-        if path == "": path = self.config_dict["save_dir"]
+        if path == "": path = self.save_dir
         self.model.eval()
         self.model.load_state_dict(torch.load(path+'network.params', map_location=self.device))
 
     def train(self):
         """Trains the network"""
-        train_loader = self._load_data("training", self.config_dict["training_set_fraction"])
+        train_loader = self._load_data("training", self.training_set_fraction)
         valid_loader = self._load_data("validation")
 
         print(self.device)
@@ -50,16 +51,16 @@ class pk_emulator():
         best_loss = torch.inf
 
         # loop thru training rounds
-        for round in range(len(self.config_dict["learning_rate"])):
+        for round in range(len(self.learning_rate)):
             print("Round {:0.0f}, initial learning rate = {:0.2e}".format(
-                   round, self.config_dict["learning_rate"][round]))
+                   round, self.learning_rate[round]))
             
             if round != 0: self.load_trained_model()
             self._set_optimizer(round)
 
             # loop thru epochs
             epochs_since_update = 0
-            for epoch in range(self.config_dict["num_epochs"]):
+            for epoch in range(self.num_epochs):
 
                 self._train_one_epoch(train_loader)
                 self.train_loss.append(calc_avg_loss(self.model, train_loader))
@@ -73,7 +74,7 @@ class pk_emulator():
                     epochs_since_update += 1
 
                 print("Epoch : {:d}, avg train loss: {:0.4f}\t avg validation loss: {:0.4f}\t ({:0.0f})".format(epoch, self.train_loss[-1], self.valid_loss[-1], epochs_since_update))
-                if epochs_since_update > self.config_dict["early_stopping_epochs"]:
+                if epochs_since_update > self.early_stopping_epochs:
                     print("Model has not impvored for {:0.0f} epochs. Initiating early stopping...".format(epochs_since_update))
                     break
 
@@ -86,7 +87,7 @@ class pk_emulator():
         params = params.view(1, params.shape[0])
         pk = self.model.forward(params)
         pk = pk.view(self.num_zbins, self.num_tracers, 2, self.num_kbins)
-        pk = un_normalize(pk, self.config_dict["min_norm_v"], self.config_dict["max_norm_v"])
+        pk = un_normalize(pk, self.min_norm_v, self.max_norm_v)
         pk = pk.to("cpu").detach().numpy()
         return pk
 
@@ -96,14 +97,14 @@ class pk_emulator():
 
     def _init_device(self):
         """Sets emulator device based on machine configuration"""
-        if self.config_dict["use_gpu"] == False: self.device = torch.device('cpu')
-        elif torch.cuda.is_available():          self.device = torch.device('cuda:0')
-        elif torch.backends.mps.is_available():  self.device = torch.device("mps")
-        else:                                    self.device = torch.device('cpu')
+        if self.use_gpu == False:               self.device = torch.device('cpu')
+        elif torch.cuda.is_available():         self.device = torch.device('cuda:0')
+        elif torch.backends.mps.is_available(): self.device = torch.device("mps")
+        else:                                   self.device = torch.device('cpu')
 
     def _init_model(self):
         """Initializes the network"""
-        if self.config_dict["model"] == "MLP_single_tracer":
+        if self.model_type == "MLP_single_tracer":
             self.model = MLP_single_tracer(self.config_dict).to(self.device)
         else:
             print("ERROR: Invalid value for model")
@@ -116,21 +117,21 @@ class pk_emulator():
         Current options for initialization schemes are ["normal", "He", "xavier"]
         """
         if isinstance(m, nn.Linear):
-            if self.config_dict["weight_initialization"] == "He":
+            if self.weight_initialization == "He":
                 nn.init.kaiming_uniform_(m.weight)
-            elif self.config_dict["weight_initialization"] == "normal":
+            elif self.weight_initialization == "normal":
                 nn.init.normal_(m.weight, mean=0., std=0.1)
                 nn.init.zeros_(m.bias)
-            elif self.config_dict["weight_initialization"] == "xavier":
+            elif self.weight_initialization == "xavier":
                 nn.init.xavier_normal_(m.weight)
             else: # if scheme is invalid, use normal initialization as a substitute
                 nn.init.normal_(m.weight, mean=0., std=0.1)
                 nn.init.zeros_(m.bias)
 
     def _set_optimizer(self, round):
-        if self.config_dict["optimizer"] == "Adam":
+        if self.optimizer == "Adam":
             self.optimizer = torch.optim.Adam(self.model.parameters(), 
-                                              lr=self.config_dict["learning_rate"][round])
+                                              lr=self.learning_rate[round])
         else:
             print("Error! Invalid optimizer type specified!")
 
@@ -138,24 +139,24 @@ class pk_emulator():
         """saves the current model state to file"""
         training_data = torch.vstack([ torch.Tensor(self.train_loss), 
                                       torch.Tensor(self.valid_loss)])
-        torch.save(training_data, self.config_dict["save_dir"]+"train_data.dat")
+        torch.save(training_data, self.save_dir+"train_data.dat")
 
-        with open(self.config_dict["save_dir"]+'config.yaml', 'w') as outfile:
+        with open(self.save_dir+'config.yaml', 'w') as outfile:
             yaml.dump(dict(self.config_dict), outfile, default_flow_style=True)
 
-        torch.save(self.model.state_dict(), self.config_dict["save_dir"]+'network.params')
+        torch.save(self.model.state_dict(), self.save_dir+'network.params')
 
     def _load_data(self, key, data_frac=1.0, return_dataloader=True):
 
         if key in ["training", "validation", "testing"]:
-            data = pk_galaxy_dataset(self.config_dict["training_dir"], key, data_frac,
-                                     self.config_dict["min_norm_v"], self.config_dict["max_norm_v"])
+            data = pk_galaxy_dataset(self.training_dir, key, data_frac,
+                                     self.min_norm_v, self.max_norm_v)
             data.to(self.device)
             data_loader = torch.utils.data.DataLoader(data, batch_size=self.config_dict["batch_size"], shuffle=True)
             
             # set normalization based on min and max values in the training set
             if key == "training":
-                self.config_dict["min_norm_v"], self.config_dict["max_norm_v"] = data.get_norm_values()
+                self.min_norm_v, self.max_norm_v = data.get_norm_values()
 
             if return_dataloader: return data_loader
             else: return data

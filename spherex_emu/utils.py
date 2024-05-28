@@ -33,6 +33,34 @@ def organize_parameters(config_dict):
     params = list(params_dict.keys())
     return params, priors
 
+def prepare_ps_inputs(samples, params, num_tracers, num_zbins, cosmo_params, bias_params):
+    """takes a set of parameters and oragnizes them to the format expected by ps_1loop"""
+    param_vector = []
+    cosmo_list = list(cosmo_params.keys())
+    bias_list = list(bias_params.keys())
+
+    for pname in cosmo_list:
+        if pname in params:
+            #print(params.index(pname))
+            param_vector.append(samples[params.index(pname)])
+        else:
+            param_vector.append(cosmo_params[pname])
+
+    # The below is a (unrealistic) case in which all tracers have the same nuisance parameter values.
+    for isample in range(num_tracers):
+        for iz in range(num_zbins):
+            sub_vector = []
+            for pname in bias_list:
+                #print(pname)
+                if pname in params:
+                    #print(params.index(pname))
+                    sub_vector.append(samples[params.index(pname)])
+                else:
+                    sub_vector.append(bias_params[pname])
+            #param_vector += [nuisance_params[pname] for pname in nuisance_pname_list]
+            param_vector += sub_vector
+        return np.array(param_vector)
+
 def make_latin_hypercube(priors, N):
     """Generates a latin hypercube of N samples with lower and upper bounds given by priors"""
 
@@ -122,49 +150,3 @@ def normalize(X, min_v, max_v):
 
 def un_normalize(X, min_v, max_v):
     return (X * (max_v - min_v)) + min_v
-
-def symmetric_log(m):
-    """Takes an input tensor and returns the normalized piece-wise logarithm 
-    
-    This function is used for pre-processing and uses the following equation:\n
-    sym_log(x) =  log10(x+1),  x >= 0\n
-    sym_log(x) = -log10(-x+1), x < 0\n
-
-    Args:
-        m: (3D Tensor) Batch of matrices to normalize
-    """
-    device = m.device
-    pos_m, neg_m = torch.zeros(m.shape, device=device), torch.zeros(m.shape, device=device)
-    pos_idx = torch.where(m >= 0)
-    neg_idx = torch.where(m < 0)
-    pos_m[pos_idx] = m[pos_idx]
-    neg_m[neg_idx] = m[neg_idx]
-
-    pos_m[pos_idx] = torch.log10(pos_m[pos_idx] + 1)
-    # for negative numbers, treat log(x) = -log(-x)
-    neg_m[neg_idx] = -torch.log10(-1*neg_m[neg_idx] + 1)
-    return (pos_m) + (neg_m)
-
-def symmetric_exp(m):
-    """Takes a tensor and returns the piece-wise exponent
-
-    sym_exp(x) =  10^( x*pos_norm), x > 0\n
-    sym_exp(x) = -10^-(x*neg_norm), x < 0\n
-    This is the reverse operation of symmetric_log
-
-    Args:
-        m (3D Tensor) Batch of matrices to reverse-normalize
-    """
-    device = m.device
-    pos_m, neg_m = torch.zeros(m.shape, device=device), torch.zeros(m.shape, device=device)
-    pos_idx = torch.where(m >= 0)
-    neg_idx = torch.where(m < 0)
-    pos_m[pos_idx] = m[pos_idx]
-    neg_m[neg_idx] = m[neg_idx]
-
-    pos_m = 10**pos_m - 1
-    pos_m[(pos_m == 1)] = 0
-    # for negative numbers, treat log(x) = -log(-x)
-    neg_m[neg_idx] = -10**(-1*neg_m[neg_idx]) + 1
-
-    return pos_m + neg_m
