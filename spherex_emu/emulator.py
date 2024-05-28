@@ -75,8 +75,8 @@ class pk_emulator():
                     print("Model has not impvored for {:0.0f} epochs. Initiating early stopping...".format(epochs_since_update))
                     break
 
-        print("\nBest validation loss was {:0.3f} after {:0.0f} epochs".format(
-               best_loss, epoch - epochs_since_update))
+            print("Best validation loss was {:0.3f} after {:0.0f} epochs".format(
+                best_loss, epoch - epochs_since_update))
 
     def get_power_spectra(self, params):
         

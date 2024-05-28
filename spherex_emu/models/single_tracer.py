@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 import spherex_emu.models.blocks as blocks
+from spherex_emu.utils import organize_parameters
 
 class MLP_single_tracer(nn.Module):
 
@@ -10,6 +11,8 @@ class MLP_single_tracer(nn.Module):
         super().__init__()
 
         output_dim = config_dict["output_kbins"] * 2
+        __, self.bounds = organize_parameters(config_dict)
+        self.bounds = torch.Tensor(self.bounds)
 
         self.h1 = nn.Linear(config_dict["num_cosmo_params"] + config_dict["num_bias_params"],
                             config_dict["mlp_dims"][0])
@@ -22,8 +25,12 @@ class MLP_single_tracer(nn.Module):
                                         config_dict["use_skip_connection"]))
         self.h2 = nn.Linear(config_dict["mlp_dims"][-1], output_dim)
 
+    def normalize(self, params):
+        return (params - self.bounds[:,0]) / (self.bounds[:,1] - self.bounds[:,0])
+
     def forward(self, X):
-    
+        X = self.normalize(X)
+
         X = F.leaky_relu(self.h1(X))
         for block in self.mlp_blocks:
             X = F.leaky_relu(block(X))
