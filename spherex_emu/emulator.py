@@ -70,12 +70,12 @@ class pk_emulator():
                 else:
                     epochs_since_update += 1
 
-                print("Epoch : {:d}, avg train loss: {:0.3f}\t avg validation loss: {:0.3f}\t ({:0.0f})".format(epoch, self.train_loss[-1], self.valid_loss[-1], epochs_since_update))
+                print("Epoch : {:d}, avg train loss: {:0.4f}\t avg validation loss: {:0.4f}\t ({:0.0f})".format(epoch, self.train_loss[-1], self.valid_loss[-1], epochs_since_update))
                 if epochs_since_update > self.config_dict["early_stopping_epochs"]:
                     print("Model has not impvored for {:0.0f} epochs. Initiating early stopping...".format(epochs_since_update))
                     break
 
-            print("Best validation loss was {:0.3f} after {:0.0f} epochs".format(
+            print("Best validation loss was {:0.4f} after {:0.0f} epochs".format(
                 best_loss, epoch - epochs_since_update))
 
     def get_power_spectra(self, params):
@@ -142,6 +142,10 @@ class pk_emulator():
                                      self.config_dict["min_norm_v"], self.config_dict["max_norm_v"])
             data_loader = torch.utils.data.DataLoader(data, batch_size=self.config_dict["batch_size"], shuffle=True)
             
+            # set normalization based on min and max values in the training set
+            if key == "training":
+                self.config_dict["min_norm_v"], self.config_dict["max_norm_v"] = data.get_norm_values()
+
             if return_dataloader: return data_loader
             else: return data
 

@@ -34,6 +34,10 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self.num_ells = self.pk.shape[3]
         self.num_kbins = self.pk.shape[4]
 
+        if type == "training" and self.min_norm_v == -1 and self.max_norm_v == -1:
+            self.min_norm_v = torch.amin(self.pk)
+            self.max_norm_v = torch.amax(self.pk)
+
         self.pk = normalize(self.pk, self.min_norm_v, self.max_norm_v)
         self.pk = self.pk.view(-1, self.num_zbins * self.num_tracers * self.num_ells * self.num_kbins)
 
@@ -47,6 +51,9 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
     
     def __getitem__(self, idx):
         return self.params[idx], self.pk[idx]
+
+    def get_norm_values(self):
+        return(self.min_norm_v.item(), self.max_norm_v.item())
 
     def get_power_spectra(self, idx):
         
