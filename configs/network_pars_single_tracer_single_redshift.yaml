@@ -26,11 +26,12 @@ use_skip_connection : True
 # Training parameters
 num_epochs: 350
 learning_rate: [1.0e-3, 1.0e-4]
-batch_size: 50
+batch_size: 200
 training_set_fraction : 1.0
 early_stopping_epochs: 25
 weight_initialization: He
 optimizer : Adam
+use_gpu : True
 
 # Data parameters
 # If -1, will be set based on the training set when you call pk_emulator.train()
@@ -38,6 +39,6 @@ min_norm_v : -1.
 max_norm_v : -1.
 
 # Where to save the network
-save_dir: /home/joeadamo/Research/SPHEREx/spherex_emu/emulators/mlp_single_tracer/
+save_dir: /Users/JoeyA/Research/SPHEREx/spherex_emu/emulators/mlp_single_tracer/
 # Where your training set lives
-training_dir: /home/joeadamo/Research/Data/SPHEREx-Data/Training-Set-EFT/
+training_dir: /Users/JoeyA/Research/Data/SPHEREx-Data/Training-Set-EFT/

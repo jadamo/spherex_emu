@@ -30,6 +30,7 @@ batch_size: 25
 early_stopping_epochs: 25
 weight_initialization: He
 optimizer : Adam
+use_gpu : True
 
 # Where to save the network
 save_dir: /home/joeadamo/Research/SPHEREx/spherex_emu/emulators/mlp_single_tracer/

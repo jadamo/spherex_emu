@@ -52,6 +52,11 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         return self.params[idx], self.pk[idx]
 
+    def to(self, device):
+        """send data to the specified device"""
+        self.params = self.params.to(device)
+        self.pk = self.pk.to(device)
+
     def get_norm_values(self):
         return(self.min_norm_v.item(), self.max_norm_v.item())
 

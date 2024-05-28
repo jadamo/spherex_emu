@@ -13,7 +13,8 @@ def test_single_tracer_network():
 
     # generate a random input sequence and pass it through the network
     test_input = torch.randn(1, test_emulator.config_dict["num_cosmo_params"] + 
-                                test_emulator.config_dict["num_bias_params"])
+                                test_emulator.config_dict["num_bias_params"],
+                                device = test_emulator.device)
 
     test_emulator.model.eval()
     test_output = test_emulator.model(test_input)

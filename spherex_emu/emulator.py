@@ -18,6 +18,7 @@ class pk_emulator():
         self.num_zbins   = self.config_dict["num_zbins"]
         self.num_kbins   = self.config_dict["output_kbins"]
 
+        self._init_device()
         self._init_model()
         self.model.apply(self._init_weights)
 
@@ -36,13 +37,14 @@ class pk_emulator():
         #     self.model.state_dict()[name].copy_(param)
         if path == "": path = self.config_dict["save_dir"]
         self.model.eval()
-        self.model.load_state_dict(torch.load(path+'network.params', map_location=torch.device("cpu")))
+        self.model.load_state_dict(torch.load(path+'network.params', map_location=self.device))
 
     def train(self):
         """Trains the network"""
         train_loader = self._load_data("training", self.config_dict["training_set_fraction"])
         valid_loader = self._load_data("validation")
 
+        print(self.device)
         self.train_loss = []
         self.valid_loss = []
         best_loss = torch.inf
@@ -80,21 +82,29 @@ class pk_emulator():
 
     def get_power_spectra(self, params):
         
-        params = torch.from_numpy(params).to(torch.float32)
+        params = torch.from_numpy(params).to(torch.float32).to(self.device)
         params = params.view(1, params.shape[0])
         pk = self.model.forward(params)
         pk = pk.view(self.num_zbins, self.num_tracers, 2, self.num_kbins)
-        pk = un_normalize(pk, self.config_dict["min_norm_v"], self.config_dict["max_norm_v"]).detach().numpy()
+        pk = un_normalize(pk, self.config_dict["min_norm_v"], self.config_dict["max_norm_v"])
+        pk = pk.to("cpu").detach().numpy()
         return pk
 
     # -----------------------------------------------------------
     # Helper methods: Not meant to be called by the user directly
     # -----------------------------------------------------------
 
+    def _init_device(self):
+        """Sets emulator device based on machine configuration"""
+        if self.config_dict["use_gpu"] == False: self.device = torch.device('cpu')
+        elif torch.cuda.is_available():          self.device = torch.device('cuda:0')
+        elif torch.backends.mps.is_available():  self.device = torch.device("mps")
+        else:                                    self.device = torch.device('cpu')
+
     def _init_model(self):
         """Initializes the network"""
         if self.config_dict["model"] == "MLP_single_tracer":
-            self.model = MLP_single_tracer(self.config_dict)
+            self.model = MLP_single_tracer(self.config_dict).to(self.device)
         else:
             print("ERROR: Invalid value for model")
             return -1
@@ -140,6 +150,7 @@ class pk_emulator():
         if key in ["training", "validation", "testing"]:
             data = pk_galaxy_dataset(self.config_dict["training_dir"], key, data_frac,
                                      self.config_dict["min_norm_v"], self.config_dict["max_norm_v"])
+            data.to(self.device)
             data_loader = torch.utils.data.DataLoader(data, batch_size=self.config_dict["batch_size"], shuffle=True)
             
             # set normalization based on min and max values in the training set

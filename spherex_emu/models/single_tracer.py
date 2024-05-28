@@ -11,8 +11,9 @@ class MLP_single_tracer(nn.Module):
         super().__init__()
 
         output_dim = config_dict["output_kbins"] * 2
-        __, self.bounds = organize_parameters(config_dict)
-        self.bounds = torch.Tensor(self.bounds)
+        __, bounds = organize_parameters(config_dict)
+        bounds = torch.Tensor(bounds)
+        self.register_buffer("bounds", bounds)
 
         self.h1 = nn.Linear(config_dict["num_cosmo_params"] + config_dict["num_bias_params"],
                             config_dict["mlp_dims"][0])
