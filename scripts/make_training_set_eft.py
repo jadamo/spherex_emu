@@ -36,7 +36,8 @@ bias_params  = {'b1':2., 'b2':-1., 'bG2':0.1, 'bGamma3':-0.1, 'bphi':5., 'bphid'
 k = np.linspace(0.01, 0.25, 25)
 
 N = 12
-N_PROC=12
+N_PROC=int(os.environ["SLURM_CPUS_ON_NODE"])
+#N_PROC=12
 
 # fraction of dataset to be partitioned to the training | validation | test sets
 train_frac = 0.8

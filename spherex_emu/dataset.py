@@ -3,7 +3,7 @@ import torch
 from torch.nn import functional as F
 import numpy as np
 
-from spherex_emu.utils import symmetric_log, symmetric_exp, normalize, un_normalize
+from spherex_emu.utils import normalize, un_normalize
 
 class pk_galaxy_dataset(torch.utils.data.Dataset):
 

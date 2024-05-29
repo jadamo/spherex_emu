@@ -29,7 +29,7 @@ learning_rate: [1.0e-3]
 batch_size: 25
 early_stopping_epochs: 25
 weight_initialization: He
-optimizer : Adam
+optimizer_type : Adam
 use_gpu : True
 
 # Where to save the network

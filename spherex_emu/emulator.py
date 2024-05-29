@@ -6,15 +6,16 @@ import yaml, time
 
 from spherex_emu.models.single_tracer import MLP_single_tracer
 from spherex_emu.dataset import pk_galaxy_dataset
-from spherex_emu.utils import load_config_file, calc_avg_loss, symmetric_exp, un_normalize
+from spherex_emu.utils import load_config_file, calc_avg_loss, un_normalize
 
 class pk_emulator():
     """Class defining the neural network emulator."""
 
-    def __init__(self, config_file_path):
+    def __init__(self, config_file="", config_dict:dict=None):
 
-        self.config_dict = load_config_file(config_file_path)
-        
+        if config_dict is not None: self.config_dict = config_dict
+        else:                       self.config_dict = load_config_file(config_file)
+
         # load dictionary entries into their own class variables
         for key in self.config_dict:
             setattr(self, key, self.config_dict[key])
@@ -40,20 +41,19 @@ class pk_emulator():
         self.model.eval()
         self.model.load_state_dict(torch.load(path+'network.params', map_location=self.device))
 
-    def train(self):
+    def train(self, print_progress = True):
         """Trains the network"""
         train_loader = self._load_data("training", self.training_set_fraction)
         valid_loader = self._load_data("validation")
 
-        print(self.device)
         self.train_loss = []
         self.valid_loss = []
         best_loss = torch.inf
 
         # loop thru training rounds
         for round in range(len(self.learning_rate)):
-            print("Round {:0.0f}, initial learning rate = {:0.2e}".format(
-                   round, self.learning_rate[round]))
+            if print_progress: print("Round {:0.0f}, initial learning rate = {:0.2e}".format(
+                                      round, self.learning_rate[round]))
             
             if round != 0: self.load_trained_model()
             self._set_optimizer(round)
@@ -73,7 +73,7 @@ class pk_emulator():
                 else:
                     epochs_since_update += 1
 
-                print("Epoch : {:d}, avg train loss: {:0.4f}\t avg validation loss: {:0.4f}\t ({:0.0f})".format(epoch, self.train_loss[-1], self.valid_loss[-1], epochs_since_update))
+                if print_progress: print("Epoch : {:d}, avg train loss: {:0.4f}\t avg validation loss: {:0.4f}\t ({:0.0f})".format(epoch, self.train_loss[-1], self.valid_loss[-1], epochs_since_update))
                 if epochs_since_update > self.early_stopping_epochs:
                     print("Model has not impvored for {:0.0f} epochs. Initiating early stopping...".format(epochs_since_update))
                     break
@@ -82,7 +82,7 @@ class pk_emulator():
                 best_loss, epoch - epochs_since_update))
 
     def get_power_spectra(self, params):
-        
+
         params = torch.from_numpy(params).to(torch.float32).to(self.device)
         params = params.view(1, params.shape[0])
         pk = self.model.forward(params)
@@ -129,7 +129,7 @@ class pk_emulator():
                 nn.init.zeros_(m.bias)
 
     def _set_optimizer(self, round):
-        if self.optimizer == "Adam":
+        if self.optimizer_type == "Adam":
             self.optimizer = torch.optim.Adam(self.model.parameters(), 
                                               lr=self.learning_rate[round])
         else:
