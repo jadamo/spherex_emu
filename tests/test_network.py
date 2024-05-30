@@ -1,12 +1,12 @@
-import pytest, os
 import torch
+import numpy as np
 
 import spherex_emu.emulator as emulator
-from spherex_emu.filepaths import net_config_dir
+from spherex_emu.filepaths import network_pars_dir
 
 def test_single_tracer_network():
 
-    test_dir = net_config_dir + "example.yaml"
+    test_dir = network_pars_dir + "example.yaml"
 
     # constructes the network
     test_emulator = emulator.pk_emulator(test_dir)
@@ -19,5 +19,11 @@ def test_single_tracer_network():
     test_emulator.model.eval()
     test_output = test_emulator.model(test_input)
 
+    assert torch.all(test_output >= 0) and torch.all(test_output <= 1.)
     assert test_output.shape[0] == 1
     assert test_output.shape[1] == 2 * test_emulator.config_dict["output_kbins"]
+
+    # do the same as above except now pass it some more realistic parameters
+    test_params = np.array([2.100e-9, 5., 0.6777, 0.1200, 2.0])
+    test_output = test_emulator.get_power_spectra(test_params)
+    assert test_output.shape == (1, 1, 2, 25)

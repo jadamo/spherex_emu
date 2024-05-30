@@ -7,10 +7,10 @@ cosmo_params :
   omega_c : [0.05, 0.3]
   As      : [1.2e-9,2.7e-9]
   fnl     : [-50, 50]
-num_bias_params : 1 # The number of nuisance parameters per tracer and redshift bin
+num_bias_params : 2 # The number of nuisance parameters per tracer and redshift bin
 bias_params : 
   b1   : [1., 4.]
-#  bphi : [0.01, 5.]
+  bphi : [0.01, 5.]
 
 output_kbins : 25
 
@@ -20,26 +20,21 @@ z_eff: [0.5]
 
 num_mlp_blocks      : 2
 mlp_dims            : [20, 40, 50]
-num_block_layers    : 3
+num_block_layers    : 4
 use_batchnorm       : True
 use_skip_connection : True
 
 # Training parameters
 num_epochs: 350
-learning_rate: [1.0e-3, 1.0e-4]
-batch_size: 200
+learning_rate: [7.743e-04, 1.0e-4]
+batch_size: 500
 training_set_fraction : 1.0
 early_stopping_epochs: 25
 weight_initialization: He
 optimizer_type : Adam
 use_gpu : True
 
-# Data parameters
-# If -1, will be set based on the training set when you call pk_emulator.train()
-min_norm_v : -1.
-max_norm_v : -1.
-
 # Where to save the network
 save_dir: /home/joeadamo/Research/SPHEREx/spherex_emu/emulators/mlp_single_tracer/
 # Where your training set lives
-training_dir: /home/joeadamo/Research/Data/SPHEREx-Data/Training-Set-old-EFT/
+training_dir: /home/joeadamo/Research/Data/SPHEREx-Data/Training-Set-EFT/

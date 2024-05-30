@@ -1,7 +1,7 @@
 import torch
 
 from spherex_emu.utils import *
-from spherex_emu.filepaths import net_config_dir
+from spherex_emu.filepaths import network_pars_dir
 
 # def test_symmetric_log():
 
@@ -25,19 +25,19 @@ def test_normalize():
     test_tensor = (torch.rand(10*10) * 100) - 50
     manual_norm_tensor = (test_tensor + 10) / (20)
 
-    norm_tensor = normalize(test_tensor, -10, 10)
-    unnorm_tensor = un_normalize(norm_tensor, -10, 10)
+    norm_tensor = normalize(test_tensor, torch.tensor([-10, 10]))
+    unnorm_tensor = un_normalize(norm_tensor, torch.tensor([-10, 10]))
 
     assert torch.allclose(manual_norm_tensor, norm_tensor)
     assert torch.allclose(test_tensor, unnorm_tensor)
 
-def test_organize_params():
+def test_get_parameter_ranges():
 
-    test_dir = net_config_dir + "example.yaml"
+    test_dir = network_pars_dir + "example.yaml"
 
     config_dict = load_config_file(test_dir)
 
-    params, priors = organize_parameters(config_dict)
+    params, priors = get_parameter_ranges(config_dict)
 
     expected_params = ["As", "fnl", "h", "omega_c", "b1"]
     expected_priors = np.array([[1.2e-9, 2.7e-9],

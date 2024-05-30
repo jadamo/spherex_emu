@@ -1,12 +1,12 @@
 from spherex_emu.emulator import pk_emulator
-from spherex_emu.filepaths import net_config_dir
+from spherex_emu.filepaths import network_pars_dir
 from spherex_emu.utils import load_config_file
 import math, time, torch
 import numpy as np
 
 def main():
 
-    config_file = net_config_dir + "network_pars_single_tracer_single_redshift.yaml"
+    config_file = network_pars_dir + "network_pars_single_tracer_single_redshift.yaml"
     config_dict = load_config_file(config_file)
 
     batch_size = [100, 200, 300, 400, 500]
@@ -17,7 +17,7 @@ def main():
         for lr in range(len(learning_rates)):
             
             config_dict["batch_size"] = batch_size[batch]
-            config_dict["learning_rate"][0] = learning_rates[lr]
+            config_dict["learning_rate"][0] = float(learning_rates[lr])
 
             for round in range(2):
                 emulator = pk_emulator(config_dict=config_dict)

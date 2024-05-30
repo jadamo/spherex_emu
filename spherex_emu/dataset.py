@@ -2,17 +2,18 @@ import torch
 #import torch.nn as nn
 from torch.nn import functional as F
 import numpy as np
+import os
 
 from spherex_emu.utils import normalize, un_normalize
 
 class pk_galaxy_dataset(torch.utils.data.Dataset):
 
-    def __init__(self, data_dir:str, type:str, frac=1.,
-                 min_norm_v = -1, max_norm_v = -1):
+    def __init__(self, data_dir:str, type:str, frac=1.):
         
-        self.min_norm_v = min_norm_v
-        self.max_norm_v = max_norm_v
         self._load_data(data_dir, type, frac)
+        self._set_normalization(data_dir, type)
+        self.pk = normalize(self.pk, self.normalizations)
+        self.pk = self.pk.view(-1, self.num_zbins * self.num_tracers * self.num_ells * self.num_kbins)
 
     def _load_data(self, data_dir, type, frac):
 
@@ -34,17 +35,23 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self.num_ells = self.pk.shape[3]
         self.num_kbins = self.pk.shape[4]
 
-        if type == "training" and self.min_norm_v == -1 and self.max_norm_v == -1:
-            self.min_norm_v = torch.amin(self.pk)
-            self.max_norm_v = torch.amax(self.pk)
-
-        self.pk = normalize(self.pk, self.min_norm_v, self.max_norm_v)
-        self.pk = self.pk.view(-1, self.num_zbins * self.num_tracers * self.num_ells * self.num_kbins)
-
         if frac != 1.:
             N_frac = int(self.params.shape[0] * frac)
             self.params = self.params[0:N_frac]
             self.pk = self.pk[0:N_frac]
+
+    def _set_normalization(self, data_dir, type):
+        """finds the min and max values for each multipole and saves to another file"""
+        self.normalizations = torch.zeros(2, self.num_tracers, self.num_zbins, self.num_ells, 1)
+        if type == "training":
+            for tracer in range(self.num_tracers):
+                for zbin in range(self.num_zbins):
+                    for ell in range(self.num_ells):
+                        self.normalizations[0,tracer,zbin,ell] = torch.amin(self.pk[:,tracer, zbin, ell, :]).item()
+                        self.normalizations[1,tracer,zbin,ell] = torch.amax(self.pk[:,tracer, zbin, ell, :]).item()
+            torch.save(self.normalizations, data_dir+"pk-normalization.dat")
+        elif os.path.exists(data_dir+"pk-normalization.dat"):
+            self.normalizations = torch.load(data_dir+"pk-normalization.dat")
 
     def __len__(self):
         return self.params.shape[0]
@@ -58,10 +65,10 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self.pk = self.pk.to(device)
 
     def get_norm_values(self):
-        return(self.min_norm_v.item(), self.max_norm_v.item())
+        return self.normalizations
 
     def get_power_spectra(self, idx):
         
         pk = self.pk[idx].view(self.num_zbins, self.num_tracers, self.num_ells, self.num_kbins)
-        pk = un_normalize(pk, self.min_norm_v, self.max_norm_v).detach().numpy()
+        pk = un_normalize(pk, self.normalizations).detach().numpy()
         return pk

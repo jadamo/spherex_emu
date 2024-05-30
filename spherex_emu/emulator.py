@@ -40,6 +40,7 @@ class pk_emulator():
         if path == "": path = self.save_dir
         self.model.eval()
         self.model.load_state_dict(torch.load(path+'network.params', map_location=self.device))
+        self.output_normalizations = torch.load(path+"output_normalization.dat", map_location=self.device)
 
     def train(self, print_progress = True):
         """Trains the network"""
@@ -86,8 +87,8 @@ class pk_emulator():
         params = torch.from_numpy(params).to(torch.float32).to(self.device)
         params = params.view(1, params.shape[0])
         pk = self.model.forward(params)
-        pk = pk.view(self.num_zbins, self.num_tracers, 2, self.num_kbins)
-        pk = un_normalize(pk, self.min_norm_v, self.max_norm_v)
+        pk = pk.view(self.num_zbins, self.num_tracers, 2, self.output_kbins)
+        pk = un_normalize(pk, self.output_normalizations)
         pk = pk.to("cpu").detach().numpy()
         return pk
 
@@ -109,6 +110,9 @@ class pk_emulator():
         else:
             print("ERROR: Invalid value for model")
             return -1
+        
+        self.output_normalizations = torch.cat((torch.zeros((self.num_tracers, self.num_zbins, 2, 1)),
+                                                torch.ones((self.num_tracers, self.num_zbins, 2, 1))))
         
     def _init_weights(self, m):
         """Initializes weights using a specific scheme set in the input yaml file
@@ -140,23 +144,23 @@ class pk_emulator():
         training_data = torch.vstack([ torch.Tensor(self.train_loss), 
                                       torch.Tensor(self.valid_loss)])
         torch.save(training_data, self.save_dir+"train_data.dat")
-
+        
         with open(self.save_dir+'config.yaml', 'w') as outfile:
             yaml.dump(dict(self.config_dict), outfile, default_flow_style=True)
 
+        torch.save(self.output_normalizations, self.save_dir+"output_normalization.dat")
         torch.save(self.model.state_dict(), self.save_dir+'network.params')
 
     def _load_data(self, key, data_frac=1.0, return_dataloader=True):
 
         if key in ["training", "validation", "testing"]:
-            data = pk_galaxy_dataset(self.training_dir, key, data_frac,
-                                     self.min_norm_v, self.max_norm_v)
+            data = pk_galaxy_dataset(self.training_dir, key, data_frac)
             data.to(self.device)
             data_loader = torch.utils.data.DataLoader(data, batch_size=self.config_dict["batch_size"], shuffle=True)
             
             # set normalization based on min and max values in the training set
             if key == "training":
-                self.min_norm_v, self.max_norm_v = data.get_norm_values()
+                self.output_normalizations = data.normalizations
 
             if return_dataloader: return data_loader
             else: return data

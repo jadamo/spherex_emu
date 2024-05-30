@@ -20,7 +20,7 @@ def load_config_file(config_file:str):
     
     return config_dict
 
-def organize_parameters(config_dict):
+def get_parameter_ranges(config_dict):
     """Organizes parameters found in the config dict into a standard form.
     TODO: Update to handle multiple redshift bins / tracers"""
 
@@ -33,31 +33,27 @@ def organize_parameters(config_dict):
     params = list(params_dict.keys())
     return params, priors
 
-def prepare_ps_inputs(samples, params, num_tracers, num_zbins, cosmo_params, bias_params):
+def prepare_ps_inputs(sample, fiducial_params, num_tracers, num_zbins):
     """takes a set of parameters and oragnizes them to the format expected by ps_1loop"""
     param_vector = []
-    cosmo_list = list(cosmo_params.keys())
-    bias_list = list(bias_params.keys())
-
-    for pname in cosmo_list:
-        if pname in params:
+    # fill in cosmo params in the order ps_1loop expects
+    for pname in list(fiducial_params["cosmo_params"].keys()):
+        if pname in sample:
             #print(params.index(pname))
-            param_vector.append(samples[params.index(pname)])
+            param_vector.append(sample[pname])
         else:
-            param_vector.append(cosmo_params[pname])
+            param_vector.append(fiducial_params["cosmo_params"][pname])
 
+    # fill in bias params
     # The below is a (unrealistic) case in which all tracers have the same nuisance parameter values.
     for isample in range(num_tracers):
         for iz in range(num_zbins):
             sub_vector = []
-            for pname in bias_list:
-                #print(pname)
-                if pname in params:
-                    #print(params.index(pname))
-                    sub_vector.append(samples[params.index(pname)])
+            for pname in list(fiducial_params["bias_params"].keys()):
+                if pname in sample:
+                    sub_vector.append(sample[pname])
                 else:
-                    sub_vector.append(bias_params[pname])
-            #param_vector += [nuisance_params[pname] for pname in nuisance_pname_list]
+                    sub_vector.append(fiducial_params["bias_params"][pname])
             param_vector += sub_vector
         return np.array(param_vector)
 
@@ -145,8 +141,12 @@ def calc_avg_loss(net, data_loader):
     avg_loss /= len(data_loader)
     return avg_loss
 
-def normalize(X, min_v, max_v):
+def normalize(X, normalizations):
+    min_v = normalizations[0]
+    max_v = normalizations[1]
     return (X - min_v) / (max_v - min_v)
 
-def un_normalize(X, min_v, max_v):
+def un_normalize(X, normalizations):
+    min_v = normalizations[0]
+    max_v = normalizations[1]
     return (X * (max_v - min_v)) + min_v
