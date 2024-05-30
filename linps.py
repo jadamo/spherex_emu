@@ -57,16 +57,35 @@ def get_linps(params):
 
 #Parallelizing linps
 
-f = open("lhc.txt", 'r')
-f_op = f.read()
+lhc = open("lhc.txt", "r")
+lhc = lhc.read().strip('[').strip(']').split()
+print(lhc)
 
-print(f_op)
-print(lhc_list)
+#lhc_array = np.array(eval(content))
+#lhc_array = lhc_array.reshape(3,5)
+
+#content = content.strip('[',).strip(']').strip('/n')
+#lhc_list = list(map(float, content.split(',')))
+#lhc_array = np.array(lhc_list).reshape(3,5)
+
+#SET: x = # of data vectors, y = # of params
+
 '''
+x = 3
+y = 5
+
+f = open("lhc.txt", 'r')
+fog = f.read()
+f1 = fog.strip('[]')
+f2 = np.fromstring(f1, sep=',')
+f3 = np.reshape(f2, (x, y))
+f4 = [list(row) for row in f3]
+print(f4)
+'''
+
 with multiprocessing.Pool() as pool:
-	results = pool.map(get_linps, f_op)
+	results = pool.map(get_linps, lhc)
 
 out_param, out_k, out_psm, out_psq = results
 
 np.savez("/home/u14/gibbins/spherex_emu/out.npz",params=out_param,psm=out_psm,psq=out_psq)
-'''
