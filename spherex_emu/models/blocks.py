@@ -11,15 +11,16 @@ class block_resnet(nn.Module):
         super().__init__()
 
         self.layers = nn.Sequential()
-        self.layers.add_module(nn.Linear(input_dim, output_dim), nn.ReLu())
+        self.layers.add_module("layer0",    nn.Linear(input_dim, output_dim))
+        self.layers.add_module("ReLU", nn.ReLU())
         for i in range(num_layers-1):
-                self.layers.add_module(nn.Linear(output_dim, output_dim),
-                                       nn.Batchnorm1d(output_dim),
-                                       nn.ReLu())
+            self.layers.add_module("layer"+str(i+1), nn.Linear(output_dim, output_dim))
+            self.layers.add_module("bn"+str(i+1),    nn.BatchNorm1d(output_dim))
+            self.layers.add_module("ReLU",      nn.ReLU())
     
         if skip_connection:
             self.skip_layer = nn.Linear(input_dim, output_dim)
-            self.bn = nn.Batchnorm1d(output_dim)
+            self.bn = nn.BatchNorm1d(output_dim)
 
     def forward(self, X):
         Y = self.layers(X)
