@@ -22,6 +22,9 @@ def create_lhs_samples(n_samples , prior):
 #SET: number of data vectors
 x = 3
 
-f = open("lhc.txt", "a")
+np.savetxt("lhc.txt",create_lhs_samples(x,prior))
+
+'''
+f = open("lhc.txt", "i")
 f.write(str(create_lhs_samples(x, prior)))
-f.close()
+f.close()'''
