@@ -26,8 +26,8 @@ use_skip_connection : True
 
 # Training parameters
 num_epochs: 350
-learning_rate: [7.743e-04, 1.0e-4]
-batch_size: 500
+learning_rate: [4.65e-04, 1.0e-4]
+batch_size: 100
 training_set_fraction : 1.0
 early_stopping_epochs: 25
 weight_initialization: He

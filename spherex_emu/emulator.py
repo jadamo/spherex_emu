@@ -112,7 +112,7 @@ class pk_emulator():
             return -1
         
         self.output_normalizations = torch.cat((torch.zeros((self.num_tracers, self.num_zbins, 2, 1)),
-                                                torch.ones((self.num_tracers, self.num_zbins, 2, 1))))
+                                                torch.ones((self.num_tracers, self.num_zbins, 2, 1)))).to(self.device)
         
     def _init_weights(self, m):
         """Initializes weights using a specific scheme set in the input yaml file
