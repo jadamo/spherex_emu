@@ -82,10 +82,11 @@ f3 = np.reshape(f2, (x, y))
 f4 = [list(row) for row in f3]
 print(f4)
 '''
-
+'''
 with multiprocessing.Pool() as pool:
 	results = pool.map(get_linps, lhc)
 
 out_param, out_k, out_psm, out_psq = results
 
 np.savez("/home/u14/gibbins/spherex_emu/out.npz",params=out_param,psm=out_psm,psq=out_psq)
+'''
