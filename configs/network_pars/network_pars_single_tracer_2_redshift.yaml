@@ -1,5 +1,5 @@
 
-model_type : MLP_single_tracer_single_redshift
+model_type : MLP_single_tracer_multi_redshift
 
 num_cosmo_params : 4
 cosmo_params : 
@@ -7,16 +7,14 @@ cosmo_params :
   omega_c : [0.05, 0.3]
   As      : [1.2e-9,2.7e-9]
   fnl     : [-50, 50]
-num_bias_params : 2 # The number of nuisance parameters per tracer and redshift bin
+num_bias_params : 1 # The number of nuisance parameters per tracer and redshift bin
 bias_params : 
   b1   : [1., 4.]
-  bphi : [0.01, 5.]
 
 output_kbins : 25
 
 num_tracers : 1
-num_zbins   : 1
-z_eff: [0.5]
+num_zbins   : 2
 
 num_mlp_blocks      : 2
 mlp_dims            : [20, 40, 50]
@@ -35,6 +33,6 @@ optimizer_type : Adam
 use_gpu : True
 
 # Where to save the network
-save_dir: /home/joeadamo/Research/SPHEREx/spherex_emu/emulators/mlp_single_tracer/
+save_dir: /home/joeadamo/Research/SPHEREx/spherex_emu/emulators/mlp_multi_tracer/
 # Where your training set lives
 training_dir: /home/joeadamo/Research/Data/SPHEREx-Data/Training-Set-EFT-1t-1z/

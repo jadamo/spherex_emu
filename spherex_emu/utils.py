@@ -1,7 +1,5 @@
-from easydict import EasyDict
 import yaml, os
 from scipy.stats import qmc
-import torch
 from torch.nn import functional as F
 import numpy as np
 

@@ -4,7 +4,8 @@ from torch.nn import functional as F
 import numpy as np
 import yaml, time
 
-from spherex_emu.models.single_tracer import MLP_single_tracer
+from spherex_emu.models.single_sample_single_redshift import MLP_single_sample_single_redshift
+from spherex_emu.models.single_sample_multi_redshift import MLP_single_sample_multi_redshift
 from spherex_emu.dataset import pk_galaxy_dataset
 from spherex_emu.utils import load_config_file, calc_avg_loss, un_normalize
 
@@ -105,8 +106,10 @@ class pk_emulator():
 
     def _init_model(self):
         """Initializes the network"""
-        if self.model_type == "MLP_single_tracer":
-            self.model = MLP_single_tracer(self.config_dict).to(self.device)
+        if self.model_type == "MLP_single_sample_single_redshift":
+            self.model = MLP_single_sample_single_redshift(self.config_dict).to(self.device)
+        elif self.model_type == "MLP_single_sample_multi_redshift":
+            self.model = MLP_single_sample_multi_redshift(self.config_dict).to(self.device)
         else:
             print("ERROR: Invalid value for model")
             return -1

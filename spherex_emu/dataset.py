@@ -4,7 +4,7 @@ from torch.nn import functional as F
 import numpy as np
 import os
 
-from spherex_emu.utils import normalize, un_normalize
+from spherex_emu.utils import normalize, un_normalize, load_config_file
 
 class pk_galaxy_dataset(torch.utils.data.Dataset):
 
@@ -29,7 +29,11 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self.params = torch.from_numpy(data["params"]).to(torch.float32)
         self.pk = torch.from_numpy(data["pk"]).to(torch.float32)
         del data
-        
+
+        # header_info = load_config_file(data_dir+"info.yaml")
+        # self.cosmo_params = header_info["cosmo_params"]
+        # self.bias_params = header_info["bias_params"]
+
         self.num_zbins = self.pk.shape[1]
         self.num_tracers = self.pk.shape[2]
         self.num_ells = self.pk.shape[3]

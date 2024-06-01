@@ -5,7 +5,7 @@ from torch.nn import functional as F
 import spherex_emu.models.blocks as blocks
 from spherex_emu.utils import get_parameter_ranges
 
-class MLP_single_tracer(nn.Module):
+class MLP_single_sample_single_redshift(nn.Module):
 
     def __init__(self, config_dict):
         super().__init__()
