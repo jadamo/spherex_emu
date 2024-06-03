@@ -133,7 +133,8 @@ def calc_avg_loss(net, data_loader):
     net.eval()
     avg_loss = 0.
     for (i, batch) in enumerate(data_loader):
-        prediction = net(batch[0])
+        params = data_loader.dataset.get_repeat_params(batch[2], data_loader.dataset.num_samples, data_loader.dataset.num_zbins)
+        prediction = net(params)
         avg_loss += F.mse_loss(prediction, batch[1], reduction="sum").item()
 
     avg_loss /= len(data_loader)

@@ -1,5 +1,5 @@
 
-model_type : MLP_single_tracer
+model_type : MLP_single_sample_single_redshift
 
 num_cosmo_params : 4
 cosmo_params : 

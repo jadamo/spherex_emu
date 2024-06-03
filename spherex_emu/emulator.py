@@ -4,6 +4,7 @@ from torch.nn import functional as F
 import numpy as np
 import yaml, time
 
+from spherex_emu.models import blocks
 from spherex_emu.models.single_sample_single_redshift import MLP_single_sample_single_redshift
 from spherex_emu.models.single_sample_multi_redshift import MLP_single_sample_multi_redshift
 from spherex_emu.dataset import pk_galaxy_dataset
@@ -84,7 +85,6 @@ class pk_emulator():
                 best_loss, epoch - epochs_since_update))
 
     def get_power_spectra(self, params):
-
         params = torch.from_numpy(params).to(torch.float32).to(self.device)
         params = params.view(1, params.shape[0])
         pk = self.model.forward(params)
@@ -134,6 +134,8 @@ class pk_emulator():
             else: # if scheme is invalid, use normal initialization as a substitute
                 nn.init.normal_(m.weight, mean=0., std=0.1)
                 nn.init.zeros_(m.bias)
+        elif isinstance(m, blocks.linear_with_channels):
+            m.initialize_params(self.weight_initialization)
 
     def _set_optimizer(self, round):
         if self.optimizer_type == "Adam":
@@ -174,7 +176,8 @@ class pk_emulator():
 
         total_loss = 0.
         for (i, batch) in enumerate(train_loader):
-            params = batch[0]
+            params = train_loader.dataset.get_repeat_params(batch[2], train_loader.dataset.num_samples, train_loader.dataset.num_zbins)
+            #params = batch[0]
             target = batch[1]
 
             prediction = self.model.forward(params)
