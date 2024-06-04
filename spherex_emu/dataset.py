@@ -4,7 +4,7 @@ from torch.nn import functional as F
 import numpy as np
 import os
 
-from spherex_emu.utils import normalize, un_normalize
+from spherex_emu.utils import normalize, un_normalize, load_config_file
 
 class pk_galaxy_dataset(torch.utils.data.Dataset):
 
@@ -13,7 +13,7 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self._load_data(data_dir, type, frac)
         self._set_normalization(data_dir, type)
         self.pk = normalize(self.pk, self.normalizations)
-        self.pk = self.pk.view(-1, self.num_zbins * self.num_tracers * self.num_ells * self.num_kbins)
+        self.pk = self.pk.view(-1, self.num_zbins * self.num_samples, self.num_ells * self.num_kbins)
 
     def _load_data(self, data_dir, type, frac):
 
@@ -29,9 +29,13 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self.params = torch.from_numpy(data["params"]).to(torch.float32)
         self.pk = torch.from_numpy(data["pk"]).to(torch.float32)
         del data
-        
+
+        header_info = load_config_file(data_dir+"info.yaml")
+        self.cosmo_params = header_info["cosmo_params"]
+        self.bias_params = header_info["bias_params"]
+
         self.num_zbins = self.pk.shape[1]
-        self.num_tracers = self.pk.shape[2]
+        self.num_samples = self.pk.shape[2]
         self.num_ells = self.pk.shape[3]
         self.num_kbins = self.pk.shape[4]
 
@@ -42,13 +46,13 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
 
     def _set_normalization(self, data_dir, type):
         """finds the min and max values for each multipole and saves to another file"""
-        self.normalizations = torch.zeros(2, self.num_tracers, self.num_zbins, self.num_ells, 1)
+        self.normalizations = torch.zeros(2, self.num_zbins, self.num_samples, self.num_ells, 1)
         if type == "training":
-            for tracer in range(self.num_tracers):
-                for zbin in range(self.num_zbins):
+            for zbin in range(self.num_zbins):
+                for sample in range(self.num_samples):
                     for ell in range(self.num_ells):
-                        self.normalizations[0,tracer,zbin,ell] = torch.amin(self.pk[:,tracer, zbin, ell, :]).item()
-                        self.normalizations[1,tracer,zbin,ell] = torch.amax(self.pk[:,tracer, zbin, ell, :]).item()
+                        self.normalizations[0,zbin,sample,ell] = torch.amin(self.pk[:,zbin, sample, ell, :]).item()
+                        self.normalizations[1,zbin,sample,ell] = torch.amax(self.pk[:,zbin, sample, ell, :]).item()
             torch.save(self.normalizations, data_dir+"pk-normalization.dat")
         elif os.path.exists(data_dir+"pk-normalization.dat"):
             self.normalizations = torch.load(data_dir+"pk-normalization.dat")
@@ -57,18 +61,32 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         return self.params.shape[0]
     
     def __getitem__(self, idx):
-        return self.params[idx], self.pk[idx]
+        return self.params[idx], self.pk[idx], idx
 
     def to(self, device):
         """send data to the specified device"""
         self.params = self.params.to(device)
         self.pk = self.pk.to(device)
 
+    def get_repeat_params(self, idx, num_redshift, num_samples):
+        """returns a 3D or 4D tensor of separated parameters for each sample and redshift bin"""        
+        if num_samples == 1 and num_redshift == 1: return self.params[idx]
+
+        return_params = self.params[idx]
+        if isinstance(idx, int): 
+            return_params = return_params.unsqueeze(0).repeat(num_redshift, 1)
+            return_params = return_params.unsqueeze(1).repeat(1, num_samples, 1)
+        else:
+            return_params = return_params.unsqueeze(1).repeat(1, num_redshift, 1)
+            return_params = return_params.unsqueeze(2).repeat(1, 1, num_samples, 1)
+
+        return return_params
+
     def get_norm_values(self):
         return self.normalizations
 
     def get_power_spectra(self, idx):
         
-        pk = self.pk[idx].view(self.num_zbins, self.num_tracers, self.num_ells, self.num_kbins)
+        pk = self.pk[idx].view(self.num_zbins, self.num_samples, self.num_ells, self.num_kbins)
         pk = un_normalize(pk, self.normalizations).detach().numpy()
         return pk

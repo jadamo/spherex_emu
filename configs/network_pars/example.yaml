@@ -1,5 +1,5 @@
 
-model_type : MLP_single_tracer
+model_type : MLP_single_sample_single_redshift
 
 num_cosmo_params : 4
 cosmo_params : 
@@ -13,7 +13,7 @@ bias_params :
 
 output_kbins : 25
 
-num_tracers : 1
+num_samples : 1
 num_zbins   : 1
 z_eff: [0.5]
 
