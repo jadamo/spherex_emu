@@ -14,7 +14,7 @@ bias_params :
 
 output_kbins : 25
 
-num_tracers : 1
+num_samples : 1
 num_zbins   : 1
 z_eff: [0.5]
 

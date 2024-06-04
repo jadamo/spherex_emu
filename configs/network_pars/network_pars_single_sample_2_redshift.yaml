@@ -13,7 +13,7 @@ bias_params :
 
 output_kbins : 25
 
-num_tracers : 1
+num_samples : 1
 num_zbins   : 2
 
 num_mlp_blocks      : 2
@@ -33,6 +33,6 @@ optimizer_type : Adam
 use_gpu : False
 
 # Where to save the network
-save_dir: /home/jadamo/SPHEREx/spherex_emu/emulators/mlp_multi_redshift/
+save_dir: /home/joeadamo/Research/SPHEREx/spherex_emu/emulators/mlp_multi_redshift/
 # Where your training set lives
-training_dir: /home/jadamo/SPHEREx/data/Training-Set-EFT-1s-2z/
+training_dir: /home/joeadamo/Research/Data/SPHEREx-Data/Training-Set-EFT-1s-2z/

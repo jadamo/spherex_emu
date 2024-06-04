@@ -68,13 +68,17 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self.params = self.params.to(device)
         self.pk = self.pk.to(device)
 
-    def get_repeat_params(self, idx, num_samples, num_redshift):
-        """returns a 4D tensor of separated parameters for each sample and redshift bin"""        
+    def get_repeat_params(self, idx, num_redshift, num_samples):
+        """returns a 3D or 4D tensor of separated parameters for each sample and redshift bin"""        
         if num_samples == 1 and num_redshift == 1: return self.params[idx]
 
         return_params = self.params[idx]
-        return_params = return_params.unsqueeze(1).repeat(1, num_redshift, 1)
-        return_params = return_params.unsqueeze(2).repeat(1, 1, num_samples, 1)
+        if isinstance(idx, int): 
+            return_params = return_params.unsqueeze(0).repeat(num_redshift, 1)
+            return_params = return_params.unsqueeze(1).repeat(1, num_samples, 1)
+        else:
+            return_params = return_params.unsqueeze(1).repeat(1, num_redshift, 1)
+            return_params = return_params.unsqueeze(2).repeat(1, 1, num_samples, 1)
 
         return return_params
 

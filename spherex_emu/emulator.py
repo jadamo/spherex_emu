@@ -85,10 +85,12 @@ class pk_emulator():
                 best_loss, epoch - epochs_since_update))
 
     def get_power_spectra(self, params):
-        params = torch.from_numpy(params).to(torch.float32).to(self.device)
-        params = params.view(1, params.shape[0])
+        """Gets the power spectra corresponding to the given params by passing them thru the network"""
+
+        params = self._check_params(params)
+
         pk = self.model.forward(params)
-        pk = pk.view(self.num_zbins, self.num_tracers, 2, self.output_kbins)
+        pk = pk.view(self.num_zbins, self.num_samples, 2, self.output_kbins)
         pk = un_normalize(pk, self.output_normalizations)
         pk = pk.to("cpu").detach().numpy()
         return pk
@@ -114,8 +116,8 @@ class pk_emulator():
             print("ERROR: Invalid value for model")
             return -1
         
-        self.output_normalizations = torch.cat((torch.zeros((self.num_tracers, self.num_zbins, 2, 1)),
-                                                torch.ones((self.num_tracers, self.num_zbins, 2, 1)))).to(self.device)
+        self.output_normalizations = torch.cat((torch.zeros((self.num_zbins, self.num_samples, 2, 1)),
+                                                torch.ones((self.num_zbins, self.num_samples, 2, 1)))).to(self.device)
         
     def _init_weights(self, m):
         """Initializes weights using a specific scheme set in the input yaml file
@@ -151,7 +153,7 @@ class pk_emulator():
         torch.save(training_data, self.save_dir+"train_data.dat")
         
         with open(self.save_dir+'config.yaml', 'w') as outfile:
-            yaml.dump(dict(self.config_dict), outfile, default_flow_style=True)
+            yaml.dump(dict(self.config_dict), outfile, sort_keys=False, default_flow_style=False)
 
         torch.save(self.output_normalizations, self.save_dir+"output_normalization.dat")
         torch.save(self.model.state_dict(), self.save_dir+'network.params')
@@ -170,13 +172,37 @@ class pk_emulator():
             if return_dataloader: return data_loader
             else: return data
 
+    def _check_params(self, params):
+        """checks that input parameters are in the expected format and within the specified boundaries"""
+
+        if isinstance(params, torch.Tensor): params = params.to(self.device)
+        else: params = torch.from_numpy(params).to(torch.float32).to(self.device)
+
+        # for now, assume that params should be in the shape [nz, npar, num_params]
+        if self.num_zbins == 1 and self.num_samples == 1: 
+
+            assert params.shape[0] == self.num_cosmo_params + self.num_bias_params
+            assert torch.all(params >= self.model.bounds[:,0]) and \
+                   torch.all(params <= self.model.bounds[:,1])
+        
+        else:
+            assert params.shape[:] == (self.num_zbins, self.num_samples, self.num_cosmo_params + self.num_bias_params)
+            # # TODO: replace this with faster code
+            for z in range(self.num_zbins):
+                for s in range(self.num_samples):
+                    # check cosmology parameters 
+                    assert torch.all(params[z,s,:] >= self.model.bounds[:,0]) and \
+                           torch.all(params[z,s,:] <= self.model.bounds[:,1])
+        
+        return params.unsqueeze(0)
+
     def _train_one_epoch(self, train_loader):
         """basic training loop"""
         self.model.train()
 
         total_loss = 0.
         for (i, batch) in enumerate(train_loader):
-            params = train_loader.dataset.get_repeat_params(batch[2], train_loader.dataset.num_samples, train_loader.dataset.num_zbins)
+            params = train_loader.dataset.get_repeat_params(batch[2], self.num_zbins, self.num_samples)
             #params = batch[0]
             target = batch[1]
 
