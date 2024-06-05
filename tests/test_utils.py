@@ -39,11 +39,12 @@ def test_get_parameter_ranges():
 
     params, priors = get_parameter_ranges(config_dict)
 
-    expected_params = ["As", "fnl", "h", "omega_c", "b1"]
+    expected_params = ["As", "fnl", "h", "omega_c", "b1_0"]
     expected_priors = np.array([[1.2e-9, 2.7e-9],
                                 [-50, 50],
                                 [0.4, 1.0],
                                 [0.05, 0.3],
                                 [1., 4.]])
+    
     assert expected_params == params
     assert np.all(np.equal(expected_priors, priors))

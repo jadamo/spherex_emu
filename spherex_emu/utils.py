@@ -19,11 +19,14 @@ def load_config_file(config_file:str):
     return config_dict
 
 def get_parameter_ranges(config_dict):
-    """Organizes parameters found in the config dict into a standard form.
-    TODO: Update to handle multiple redshift bins / tracers"""
+    """Organizes parameters found in the config dict into a standard form."""
 
     cosmo_params = dict(sorted(config_dict["cosmo_params"].items()))
-    bias_params = dict(sorted(config_dict["bias_params"].items()))
+    bias_params = {}
+    for i in range(config_dict["num_samples"]):
+        sorted_params = dict(sorted(config_dict["bias_params"].items()))
+        for name in sorted_params.keys():
+            bias_params['%s_%s' % (name, i)] = sorted_params[name]
 
     params_dict = {**cosmo_params, **bias_params}
 
@@ -31,7 +34,7 @@ def get_parameter_ranges(config_dict):
     params = list(params_dict.keys())
     return params, priors
 
-def prepare_ps_inputs(sample, fiducial_params, num_tracers, num_zbins):
+def prepare_ps_inputs(sample, fiducial_params, num_spectra, num_zbins):
     """takes a set of parameters and oragnizes them to the format expected by ps_1loop"""
     param_vector = []
     # fill in cosmo params in the order ps_1loop expects
@@ -43,17 +46,24 @@ def prepare_ps_inputs(sample, fiducial_params, num_tracers, num_zbins):
             param_vector.append(fiducial_params["cosmo_params"][pname])
 
     # fill in bias params
-    # The below is a (unrealistic) case in which all tracers have the same nuisance parameter values.
-    for isample in range(num_tracers):
+    # The below is an (unrealistic) case in which all tracers have the same nuisance parameter values.
+    for isample in range(num_spectra):
         for iz in range(num_zbins):
             sub_vector = []
             for pname in list(fiducial_params["bias_params"].keys()):
-                if pname in sample:
+                key = ""
+                for name in list(sample.keys()):
+                    if name == pname+"_"+str(isample): key = name
+
+                if key in sample:
+                    sub_vector.append(sample[key])
+                elif pname in sample:
                     sub_vector.append(sample[pname])
                 else:
                     sub_vector.append(fiducial_params["bias_params"][pname])
             param_vector += sub_vector
-        return np.array(param_vector)
+
+    return np.array(param_vector)
 
 def make_latin_hypercube(priors, N):
     """Generates a latin hypercube of N samples with lower and upper bounds given by priors"""
