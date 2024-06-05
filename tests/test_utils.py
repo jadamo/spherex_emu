@@ -1,7 +1,7 @@
 import torch
 
 from spherex_emu.utils import *
-from spherex_emu.filepaths import network_pars_dir
+from spherex_emu.filepaths import cosmo_pars_dir
 
 # def test_symmetric_log():
 
@@ -33,17 +33,17 @@ def test_normalize():
 
 def test_get_parameter_ranges():
 
-    test_dir = network_pars_dir + "example.yaml"
+    test_dir = cosmo_pars_dir + "eft_single_sample_single_redshift.yaml"
 
     config_dict = load_config_file(test_dir)
 
     params, priors = get_parameter_ranges(config_dict)
 
-    expected_params = ["As", "fnl", "h", "omega_c", "b1_0"]
-    expected_priors = np.array([[1.2e-9, 2.7e-9],
-                                [-50, 50],
-                                [0.4, 1.0],
+    expected_params = ["h", "omega_c", "As", "fnl", "b1"]
+    expected_priors = np.array([[0.4, 1.0],
                                 [0.05, 0.3],
+                                [1.2e-9, 2.7e-9],
+                                [-50, 50],
                                 [1., 4.]])
     
     assert expected_params == params
