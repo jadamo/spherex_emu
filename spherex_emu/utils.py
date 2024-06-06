@@ -87,26 +87,6 @@ def make_latin_hypercube(priors, N):
     
     return params
 
-# def repeat_bias_params(params, num_cosmo_params, num_samples=1):
-#     """returns an expanded list of sample parameters with each bias parameter repeated
-#        num_samples times (shuffled)"""
-
-#     if num_samples == 1: return params
-#     num_bias_params = params.shape[1] - num_cosmo_params
-#     new_dim = num_cosmo_params + (num_bias_params * num_samples)
-
-#     new_params = np.zeros((params.shape[0], new_dim))
-#     new_params[:,:num_cosmo_params] = params[:,:num_cosmo_params]
-#     for i in range(num_cosmo_params, params.shape[1]):
-#         # repeat and shuffle around bias parameters num_samples times
-#         repeated_bias = np.tile(params[:,i], (num_samples, 1)).T
-#         [np.random.shuffle(repeated_bias[:,j]) for j in range(num_samples)]
-        
-#         idx = num_cosmo_params + ((i-num_cosmo_params)*num_samples)
-#         new_params[:,idx:idx+num_samples] = repeated_bias
-        
-#     return new_params
-
 def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, test_frac:float, 
                           param_dim, num_zbins, num_tracers, k_dim, remove_old_files=True):
     """Takes a set of matrices and reorganizes them into training, validation, and tests sets
@@ -175,7 +155,8 @@ def calc_avg_loss(net, data_loader):
     net.eval()
     avg_loss = 0.
     for (i, batch) in enumerate(data_loader):
-        params = data_loader.dataset.get_repeat_params(batch[2], data_loader.dataset.num_zbins, data_loader.dataset.num_samples)
+        #params = data_loader.dataset.get_repeat_params(batch[2], data_loader.dataset.num_zbins, data_loader.dataset.num_samples)
+        params = batch[0]
         prediction = net(params)
         avg_loss += F.mse_loss(prediction, batch[1], reduction="sum").item()
 

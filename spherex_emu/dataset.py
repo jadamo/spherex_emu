@@ -12,7 +12,7 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         
         self._load_data(data_dir, type, frac)
         self._set_normalization(data_dir, type)
-        self.pk = normalize(self.pk, self.normalizations)
+        self.pk = normalize(self.pk, self.output_normalizations)
         self.pk = self.pk.view(-1, self.num_zbins * self.num_samples, self.num_ells * self.num_kbins)
 
     def _load_data(self, data_dir, type, frac):
@@ -46,16 +46,16 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
 
     def _set_normalization(self, data_dir, type):
         """finds the min and max values for each multipole and saves to another file"""
-        self.normalizations = torch.zeros(2, self.num_zbins, self.num_samples, self.num_ells, 1)
+        self.output_normalizations = torch.zeros(2, self.num_zbins, self.num_samples, self.num_ells, 1)
         if type == "training":
             for zbin in range(self.num_zbins):
                 for sample in range(self.num_samples):
                     for ell in range(self.num_ells):
-                        self.normalizations[0,zbin,sample,ell] = torch.amin(self.pk[:,zbin, sample, ell, :]).item()
-                        self.normalizations[1,zbin,sample,ell] = torch.amax(self.pk[:,zbin, sample, ell, :]).item()
-            torch.save(self.normalizations, data_dir+"pk-normalization.dat")
+                        self.output_normalizations[0,zbin,sample,ell] = torch.amin(self.pk[:,zbin, sample, ell, :]).item()
+                        self.output_normalizations[1,zbin,sample,ell] = torch.amax(self.pk[:,zbin, sample, ell, :]).item()
+            torch.save(self.output_normalizations, data_dir+"pk-normalization.dat")
         elif os.path.exists(data_dir+"pk-normalization.dat"):
-            self.normalizations = torch.load(data_dir+"pk-normalization.dat")
+            self.output_normalizations = torch.load(data_dir+"pk-normalization.dat")
 
     def __len__(self):
         return self.params.shape[0]

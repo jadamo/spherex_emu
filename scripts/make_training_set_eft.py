@@ -31,7 +31,7 @@ cosmo_config_file = filepaths.cosmo_pars_dir+"eft_2_sample_2_redshift.yaml"
 survey_config_file = filepaths.survey_pars_dir+'survey_pars_2_sample_2_redshift.yaml'
 
 save_dir = "/home/joeadamo/Research/Data/SPHEREx-Data/Training-Set-EFT-2s-2z/"
-
+-range
 #-------------------------------------------------------------------
 # FUNCTIONS
 #-------------------------------------------------------------------
