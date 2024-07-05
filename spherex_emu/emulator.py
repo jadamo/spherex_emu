@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import numpy as np
-import yaml, time
+import yaml, warnings, math
 
 from spherex_emu.models import blocks
 from spherex_emu.models.single_sample_single_redshift import MLP_single_sample_single_redshift
@@ -93,7 +93,7 @@ class pk_emulator():
         params = self._check_params(params)
 
         pk = self.model.forward(params)
-        pk = pk.view(self.num_zbins, self.num_samples, 2, self.output_kbins)
+        pk = pk.view(self.num_zbins, self.num_spectra, 2, self.output_kbins)
         pk = un_normalize(pk, self.output_normalizations)
         pk = pk.to("cpu").detach().numpy()
         return pk
@@ -111,6 +111,7 @@ class pk_emulator():
 
     def _init_model(self):
         """Initializes the network"""
+        self.num_spectra = self.num_samples +  math.comb(self.num_samples, 2)
         if self.model_type == "MLP_single_sample_single_redshift":
             self.model = MLP_single_sample_single_redshift(self.config_dict).to(self.device)
         elif self.model_type == "MLP_single_sample_multi_redshift":
@@ -126,8 +127,8 @@ class pk_emulator():
         self.input_normalizations = torch.cat((torch.zeros((self.num_zbins, self.num_samples, self.num_cosmo_params + self.num_bias_params)),
                                                 torch.ones((self.num_zbins, self.num_samples, self.num_cosmo_params + self.num_bias_params)))).to(self.device)
 
-        self.output_normalizations = torch.cat((torch.zeros((self.num_zbins, self.num_samples, 2, 1)),
-                                                torch.ones((self.num_zbins, self.num_samples, 2, 1)))).to(self.device)
+        self.output_normalizations = torch.cat((torch.zeros((self.num_zbins, self.num_spectra, 2, 1)),
+                                                torch.ones((self.num_zbins, self.num_spectra, 2, 1)))).to(self.device)
 
     
     def _init_weights(self, m):
@@ -189,21 +190,23 @@ class pk_emulator():
         if isinstance(params, torch.Tensor): params = params.to(self.device)
         else: params = torch.from_numpy(params).to(torch.float32).to(self.device)
 
-        # for now, assume that params should be in the shape [nz, npar, num_params]
-        if self.num_zbins == 1 and self.num_samples == 1: 
+        # for now, assume that params should be 1D and in the form
+        # [cosmo_params, bias_params for each sample / zbin grouped together]
+        assert params.shape[0] == self.num_cosmo_params + (self.num_bias_params * self.num_zbins * self.num_samples)
+        # if not (torch.all(params >= self.model.bounds[0]) and \
+        #         torch.all(params <= self.model.bounds[1])):
+        #     warnings.warn("Input parameter values are out of bounds! Emulator output probably can't be trusted", UserWarning)
 
-            assert params.shape[0] == self.num_cosmo_params + self.num_bias_params
-            assert torch.all(params >= self.model.bounds[:,0]) and \
-                   torch.all(params <= self.model.bounds[:,1])
-        
-        else:
-            assert params.shape[:] == (self.num_zbins, self.num_samples, self.num_cosmo_params + self.num_bias_params)
-            # # TODO: replace this with faster code
-            for z in range(self.num_zbins):
-                for s in range(self.num_samples):
-                    # check cosmology parameters 
-                    assert torch.all(params[z,s,:] >= self.model.bounds[:,0]) and \
-                           torch.all(params[z,s,:] <= self.model.bounds[:,1])
+        # if self.num_zbins == 1 and self.num_samples == 1: 
+                    
+        # else:
+        #     assert params.shape[:] == (self.num_zbins, self.num_samples, self.num_cosmo_params + self.num_bias_params)
+        #     # # TODO: replace this with faster code
+        #     for z in range(self.num_zbins):
+        #         for s in range(self.num_samples):
+        #             # check cosmology parameters 
+        #             assert torch.all(params[z,s,:] >= self.model.bounds[0]) and \
+        #                    torch.all(params[z,s,:] <= self.model.bounds[1])
         
         return params.unsqueeze(0)
 

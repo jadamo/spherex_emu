@@ -37,7 +37,7 @@ def test_ps_single_sample_single_redshift():
 
 def test_ps_single_sample_multi_redshift():
 
-    cosmo_dict = load_config_file(filepaths.cosmo_pars_dir+"eft_single_sample_fiducial.yaml")
+    cosmo_dict = load_config_file(filepaths.cosmo_pars_dir+"eft_single_sample_2_redshift.yaml")
     survey_pars = load_config_file(filepaths.survey_pars_dir + 'survey_pars_single_sample_2_redshift.yaml')
     
     ndens_table = np.array([[float(survey_pars['number_density_in_hinvMpc_%s' % (i+1)][j]) for j in range(survey_pars['nz'])] for i in range(survey_pars['nsample'])])
