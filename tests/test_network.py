@@ -40,7 +40,6 @@ def test_multi_sample_multi_redshift_network():
     test_input = torch.randn(1, test_emulator.num_cosmo_params + \
                                 (test_emulator.num_bias_params *test_emulator.num_zbins * test_emulator.num_samples),
                                 device = test_emulator.device)
-    
     test_emulator.model.eval()
     test_output = test_emulator.model(test_input)
 

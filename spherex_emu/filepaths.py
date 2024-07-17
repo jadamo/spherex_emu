@@ -14,3 +14,5 @@ survey_pars_dir = base_dir+"configs/survey_pars/"
 
 # Directory with cosmologial parameter files
 cosmo_pars_dir = base_dir+"configs/cosmo_pars/"
+
+data_dir = base_dir+"data/"
