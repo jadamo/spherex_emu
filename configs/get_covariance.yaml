@@ -1,0 +1,83 @@
+run_name: 'redshift_bins_2_samples_2'
+
+#input_dir: './configs/'
+input_dir: "/Users/JoeyA/Research/SPHEREx/spherex_emu/configs/"
+cosmo_par_file: 'cosmo_pars/planck2018_fiducial.yaml'
+cosmo_par_fid_file: 'cosmo_pars/planck2018_fiducial.yaml'
+survey_par_file: 'survey_pars/survey_pars_2_sample_2_redshift.yaml'
+
+data_vector_class_name: 'PowerSpectrumMultipoleEFT'
+bias_formulas_name: 'Galileon'
+
+PowerSpectrumMultipoleEFT:
+  nk: 25 # number of k points (to be changed into bins)
+  nmu: 8 # number of mu bins
+  kmin: 0.007 # equivalent to 0.01 h/Mpc
+  kmax: 0.175 # equivalent to 0.5 h/Mpc
+  mu_min: -1
+  mu_max: 1
+  multipole_info:
+    lmax: 2
+    do_nonzero_m: False
+    do_negative_m: False
+    do_even_l_only: True
+  debug_settings:
+    set_mu_to_zero: False
+    sigp: null
+    f_of_z: null
+    set_b2_to_zero: False
+    covariance:
+      do_shape_rescale: False
+      do_selected_itri: False
+      selected_itri: null
+      sigp: null
+      do_shot_noise_only: False
+
+output_dir: "./data/cov_2_sample_2_redshift/powerspec/"
+do_plot: False
+
+fisher:
+  data_dir: './data/cov_2_sample_2_redshift/fisher/'
+
+  do_derivatives: False
+  do_cov: True
+  do_fisher: False
+
+  do_calc_derivatives: True
+  do_calc_cov: True # if do_calc_cov = True, invcov_path is ignored
+
+  invcov_path: null
+
+AllDerivatives:
+  data_dir:  './data/cov_2_sample_2_redshift/derivatives/'
+  h_frac: 0.05
+  h:
+    fnl: 0.1
+    theta_MC_100: 0.01
+    nrun: 0.001
+  params:
+    - As
+    - ns
+    - fnl
+    - ombh2
+    - omch2
+    - nrun
+    #- w
+    #- wa
+    #- mnu
+    #- omegak
+    - "*b10"
+    #- "*b20"
+    #- "*b11"
+    #- "*b02"
+    #- "*bs2"
+  method: 'finite_diff'
+  do_convergence_plot: False
+
+covariance:
+  do_cvl_noise: False
+  fsky: 0.75
+  p3d_rsd_cov_path: null
+  output_dir:  './data/cov_2_sample_2_redshift/covariance/'
+  do_save_cov: true
+  do_save_invcov: true

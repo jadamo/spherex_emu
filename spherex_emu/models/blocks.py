@@ -82,3 +82,92 @@ class block_parallel_resnet(nn.Module):
     def forward(self, X):
         Y = self.layers(X)
         return Y + self.bn(self.skip_layer(X))
+
+
+class Nulti_Headed_Attention(nn.Module):
+
+    def __init__(self, hidden_dim, num_heads=2, dropout_prob=0.):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.num_heads = num_heads
+
+        self.layer_q = nn.Linear(hidden_dim, hidden_dim)
+        self.layer_k = nn.Linear(hidden_dim, hidden_dim)
+        self.layer_v = nn.Linear(hidden_dim, hidden_dim)
+        self.out = nn.Linear(hidden_dim, hidden_dim)
+
+        self.dropout = nn.Dropout(dropout_prob)
+        #self.softmax = nn.Softmax(hidden_dim)
+
+    def transpose_qkv(self, X):
+        """Transposition for parallel computation of multiple attention heads."""
+        # Shape of input X: (batch_size, no. of queries or key-value pairs, num_hiddens). 
+        # Shape of output X: (batch_size, no. of queries or key-value pairs, num_heads, num_hiddens / num_heads)
+        X = X.reshape(X.shape[0], X.shape[1], self.num_heads, -1)
+
+        X = X.permute(0, 2, 1, 3)
+
+        return X.reshape(-1, X.shape[2], X.shape[3])
+
+    def transpose_output(self, X):
+        """Reverse the operation of transpose_qkv."""
+        X = X.reshape(-1, self.num_heads, X.shape[1], X.shape[2])
+        X = X.permute(0, 2, 1, 3)
+        return X.reshape(X.shape[0], X.shape[1], -1)
+
+    def dot_product_attention(self, q, k, v):
+        dim = q.shape[-1]
+        # Swap the last two dimensions of keys with keys.transpose(1, 2)
+        # calculate attention scores using the dot product
+        scores = torch.bmm(q, k.transpose(1, 2)) / np.sqrt(dim)
+        # normalize so that sum(scores) = 1 and all scores > 0
+        #self.attention_weights = masked_softmax(scores, valid_lens)
+        self.attention_weights = F.softmax(scores, dim=-1)
+        # perform a batch matrix multiplaction to get the attention weights
+        return torch.bmm(self.dropout(self.attention_weights), v)
+
+    def forward(self, queries, keys, values):
+
+        queries = self.transpose_qkv(self.layer_q(queries))
+        keys    = self.transpose_qkv(self.layer_k(keys))
+        values  = self.transpose_qkv(self.layer_v(values))
+
+        X = self.dot_product_attention(queries, keys, values)
+        X = self.out(self.transpose_output(X))
+        return X
+
+class Block_AddNorm(nn.Module):
+    def __init__(self, shape, dropout_prob=0.):
+        super().__init__()
+        self.dropoiut = nn.Dropout(dropout_prob)
+        self.layerNorm = nn.LayerNorm(shape)
+    def forward(self, X, Y):
+        return self.layerNorm(self.dropoiut(Y) + X)
+
+class Block_Transformer_Encoder(nn.Module):
+    """
+    Class defining the transformer encoder block used by the emulator
+    """
+
+    def __init__(self, hidden_dim, n_heads, dropout_prob=0.):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+
+        #self.ln1 = nn.LayerNorm(self.hidden_dim)
+        self.attention = Nulti_Headed_Attention(self.hidden_dim, n_heads, dropout_prob)
+        self.addnorm1 = Block_AddNorm(self.hidden_dim, dropout_prob)
+
+        #feed-forward network
+        #self.ln2 = nn.LayerNorm(self.hidden_dim)
+        self.h1 = nn.Linear(self.hidden_dim, 2*self.hidden_dim)
+        self.h2 = nn.Linear(2*self.hidden_dim, self.hidden_dim)
+        self.addnorm2 = Block_AddNorm(self.hidden_dim, dropout_prob)
+
+    def forward(self, X):
+        X = self.addnorm1(X, self.attention(X, X, X))
+
+        Y = F.leaky_relu(self.h1(X))
+        X = self.addnorm2(X, self.h2(Y))
+
+        return X
+

@@ -4,7 +4,7 @@ import math, time
 
 def main():
 
-    config_file = network_pars_dir + "network_pars_single_sample_2_redshift.yaml"
+    config_file = network_pars_dir + "network_pars_2_sample_2_redshift.yaml"
 
     t1 = time.time()
     emulator = pk_emulator(config_file)

@@ -2,13 +2,15 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import numpy as np
-import yaml, time
+import yaml, warnings, math, os
 
 from spherex_emu.models import blocks
 from spherex_emu.models.single_sample_single_redshift import MLP_single_sample_single_redshift
 from spherex_emu.models.single_sample_multi_redshift import MLP_single_sample_multi_redshift
+from spherex_emu.models.multi_sample_multi_redshift import MLP_multi_sample_multi_redshift
 from spherex_emu.dataset import pk_galaxy_dataset
-from spherex_emu.utils import load_config_file, calc_avg_loss, un_normalize
+from spherex_emu.utils import load_config_file, calc_avg_loss, un_normalize, delta_chi_squared, mse_loss
+from spherex_emu.filepaths import base_dir, data_dir
 
 class pk_emulator():
     """Class defining the neural network emulator."""
@@ -24,6 +26,9 @@ class pk_emulator():
 
         self._init_device()
         self._init_model()
+        self._init_loss()
+        self._init_inverse_covariance()
+        self._init_normalizations()
         self.model.apply(self._init_weights)
 
     def load_trained_model(self, path=""):
@@ -39,10 +44,11 @@ class pk_emulator():
         #     if name not in self.model.state_dict():
         #         continue
         #     self.model.state_dict()[name].copy_(param)
-        if path == "": path = self.save_dir
+        if path == "": path = base_dir+self.save_dir
         self.model.eval()
         self.model.load_state_dict(torch.load(path+'network.params', map_location=self.device))
         self.output_normalizations = torch.load(path+"output_normalization.dat", map_location=self.device)
+        self.model.set_normalizations(self.output_normalizations)
 
     def train(self, print_progress = True):
         """Trains the network"""
@@ -66,8 +72,8 @@ class pk_emulator():
             for epoch in range(self.num_epochs):
 
                 self._train_one_epoch(train_loader)
-                self.train_loss.append(calc_avg_loss(self.model, train_loader))
-                self.valid_loss.append(calc_avg_loss(self.model, valid_loader))
+                self.train_loss.append(calc_avg_loss(self.model, train_loader, self.invcov, self.loss_function))
+                self.valid_loss.append(calc_avg_loss(self.model, valid_loader, self.invcov, self.loss_function))
 
                 if self.valid_loss[-1] < best_loss:
                     best_loss = self.valid_loss[-1]
@@ -90,8 +96,8 @@ class pk_emulator():
         params = self._check_params(params)
 
         pk = self.model.forward(params)
-        pk = pk.view(self.num_zbins, self.num_samples, 2, self.output_kbins)
-        pk = un_normalize(pk, self.output_normalizations)
+        pk = pk.view(self.num_zbins, self.num_spectra, 2, self.output_kbins)
+        #pk = un_normalize(pk, self.output_normalizations)
         pk = pk.to("cpu").detach().numpy()
         return pk
 
@@ -108,17 +114,45 @@ class pk_emulator():
 
     def _init_model(self):
         """Initializes the network"""
+        self.num_spectra = self.num_samples +  math.comb(self.num_samples, 2)
         if self.model_type == "MLP_single_sample_single_redshift":
             self.model = MLP_single_sample_single_redshift(self.config_dict).to(self.device)
         elif self.model_type == "MLP_single_sample_multi_redshift":
             self.model = MLP_single_sample_multi_redshift(self.config_dict).to(self.device)
+        elif self.model_type == "MLP_multi_sample_multi_redshift":
+            self.model = MLP_multi_sample_multi_redshift(self.config_dict).to(self.device)
         else:
-            print("ERROR: Invalid value for model")
-            return -1
-        
-        self.output_normalizations = torch.cat((torch.zeros((self.num_zbins, self.num_samples, 2, 1)),
-                                                torch.ones((self.num_zbins, self.num_samples, 2, 1)))).to(self.device)
-        
+            print("ERROR: Invalid value for model type")
+            raise KeyError
+                
+    def _init_normalizations(self):
+        """Initializes both input and output normalization factors"""
+        self.input_normalizations = torch.cat((torch.zeros((self.num_zbins, self.num_samples, self.num_cosmo_params + self.num_bias_params)),
+                                                torch.ones((self.num_zbins, self.num_samples, self.num_cosmo_params + self.num_bias_params)))).to(self.device)
+
+        self.output_normalizations = torch.cat((torch.zeros((self.num_zbins, self.num_spectra, 2, 1)),
+                                                torch.ones((self.num_zbins, self.num_spectra, 2, 1)))).to(self.device)
+        self.model.set_normalizations(self.output_normalizations)
+
+    def _init_inverse_covariance(self):
+        """Loads the data covariance matrix for use in certain loss functions"""
+        cov_file = data_dir+"cov_"+str(self.num_samples)+"_sample_"+str(self.num_zbins)+"_redshift/"
+        if os.path.exists(cov_file):
+            self.invcov = torch.from_numpy(np.load(cov_file+"invcov_reshape.npy")).to(self.device).to(torch.float32)
+        else:
+            self.invcov = torch.eye(2*self.num_spectra*self.output_kbins).unsqueeze(0)
+            self.invcov = self.invcov.repeat(self.num_zbins, 1, 1)
+
+    def _init_loss(self):
+        """Defines the loss function to use"""
+        if self.loss_type == "chi2":
+            self.loss_function = delta_chi_squared
+        elif self.loss_type == "mse":
+            self.loss_function = mse_loss
+        else:
+            print("ERROR: Invalid loss function type")
+            raise KeyError
+
     def _init_weights(self, m):
         """Initializes weights using a specific scheme set in the input yaml file
         
@@ -150,24 +184,25 @@ class pk_emulator():
         """saves the current model state to file"""
         training_data = torch.vstack([ torch.Tensor(self.train_loss), 
                                       torch.Tensor(self.valid_loss)])
-        torch.save(training_data, self.save_dir+"train_data.dat")
+        torch.save(training_data, base_dir+self.save_dir+"train_data.dat")
         
-        with open(self.save_dir+'config.yaml', 'w') as outfile:
+        with open(base_dir+self.save_dir+'config.yaml', 'w') as outfile:
             yaml.dump(dict(self.config_dict), outfile, sort_keys=False, default_flow_style=False)
 
-        torch.save(self.output_normalizations, self.save_dir+"output_normalization.dat")
-        torch.save(self.model.state_dict(), self.save_dir+'network.params')
+        torch.save(self.output_normalizations, base_dir+self.save_dir+"output_normalization.dat")
+        torch.save(self.model.state_dict(), base_dir+self.save_dir+'network.params')
 
     def _load_data(self, key, data_frac=1.0, return_dataloader=True):
 
         if key in ["training", "validation", "testing"]:
-            data = pk_galaxy_dataset(self.training_dir, key, data_frac)
+            data = pk_galaxy_dataset(base_dir+self.training_dir, key, data_frac)
             data.to(self.device)
             data_loader = torch.utils.data.DataLoader(data, batch_size=self.config_dict["batch_size"], shuffle=True)
             
             # set normalization based on min and max values in the training set
             if key == "training":
-                self.output_normalizations = data.normalizations
+                self.output_normalizations = data.output_normalizations
+                self.model.set_normalizations(data.output_normalizations)
 
             if return_dataloader: return data_loader
             else: return data
@@ -178,21 +213,23 @@ class pk_emulator():
         if isinstance(params, torch.Tensor): params = params.to(self.device)
         else: params = torch.from_numpy(params).to(torch.float32).to(self.device)
 
-        # for now, assume that params should be in the shape [nz, npar, num_params]
-        if self.num_zbins == 1 and self.num_samples == 1: 
+        # for now, assume that params should be 1D and in the form
+        # [cosmo_params, bias_params for each sample / zbin grouped together]
+        assert params.shape[0] == self.num_cosmo_params + (self.num_bias_params * self.num_zbins * self.num_samples)
+        # if not (torch.all(params >= self.model.bounds[0]) and \
+            #     torch.all(params <= self.model.bounds[1])):
+            # warnings.warn("Input parameter values are out of bounds! Emulator output probably can't be trusted", UserWarning)
 
-            assert params.shape[0] == self.num_cosmo_params + self.num_bias_params
-            assert torch.all(params >= self.model.bounds[:,0]) and \
-                   torch.all(params <= self.model.bounds[:,1])
-        
-        else:
-            assert params.shape[:] == (self.num_zbins, self.num_samples, self.num_cosmo_params + self.num_bias_params)
-            # # TODO: replace this with faster code
-            for z in range(self.num_zbins):
-                for s in range(self.num_samples):
-                    # check cosmology parameters 
-                    assert torch.all(params[z,s,:] >= self.model.bounds[:,0]) and \
-                           torch.all(params[z,s,:] <= self.model.bounds[:,1])
+        # if self.num_zbins == 1 and self.num_samples == 1: 
+                    
+        # else:
+        #     assert params.shape[:] == (self.num_zbins, self.num_samples, self.num_cosmo_params + self.num_bias_params)
+        #     # # TODO: replace this with faster code
+        #     for z in range(self.num_zbins):
+        #         for s in range(self.num_samples):
+        #             # check cosmology parameters 
+        #             assert torch.all(params[z,s,:] >= self.model.bounds[0]) and \
+        #                    torch.all(params[z,s,:] <= self.model.bounds[1])
         
         return params.unsqueeze(0)
 
@@ -202,13 +239,12 @@ class pk_emulator():
 
         total_loss = 0.
         for (i, batch) in enumerate(train_loader):
-            params = train_loader.dataset.get_repeat_params(batch[2], self.num_zbins, self.num_samples)
-            #params = batch[0]
+            #params = train_loader.dataset.get_repeat_params(batch[2], self.num_zbins, self.num_samples)
+            params = batch[0]
             target = batch[1]
-
             prediction = self.model.forward(params)
 
-            loss = F.mse_loss(prediction, target, reduction="sum")
+            loss = self.loss_function(prediction, target, self.invcov)
             self.optimizer.zero_grad()
             loss.backward()
 

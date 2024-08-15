@@ -1,15 +1,16 @@
+# Where to save the network
+save_dir: /home/joeadamo/Research/SPHEREx/spherex_emu/emulators/mlp_multi_redshift/
+# Where your training set lives
+training_dir: /home/joeadamo/Research/Data/SPHEREx-Data/Training-Set-EFT-1s-2z/
+# Location of config file with cosmology + bias parameters
+# This file contains all of the parameter ranges
+cosmo_dir : ./configs/cosmo_pars/eft_single_sample_2_redshift.yaml
 
 model_type : MLP_single_sample_multi_redshift
+loss_type : chi2
 
 num_cosmo_params : 4
-cosmo_params : 
-  h       : [0.4, 1.0]
-  omega_c : [0.05, 0.3]
-  As      : [1.2e-9,2.7e-9]
-  fnl     : [-50, 50]
 num_bias_params : 1 # The number of nuisance parameters per tracer and redshift bin
-bias_params : 
-  b1   : [1., 4.]
 
 output_kbins : 25
 
@@ -31,8 +32,3 @@ early_stopping_epochs: 25
 weight_initialization: He
 optimizer_type : Adam
 use_gpu : False
-
-# Where to save the network
-save_dir: /home/joeadamo/Research/SPHEREx/spherex_emu/emulators/mlp_multi_redshift/
-# Where your training set lives
-training_dir: /home/joeadamo/Research/Data/SPHEREx-Data/Training-Set-EFT-1s-2z/

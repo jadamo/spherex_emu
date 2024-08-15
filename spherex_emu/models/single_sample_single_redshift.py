@@ -3,7 +3,8 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 import spherex_emu.models.blocks as blocks
-from spherex_emu.utils import get_parameter_ranges
+from spherex_emu.utils import get_parameter_ranges, load_config_file
+from spherex_emu.filepaths import base_dir
 
 class MLP_single_sample_single_redshift(nn.Module):
 
@@ -11,9 +12,9 @@ class MLP_single_sample_single_redshift(nn.Module):
         super().__init__()
 
         output_dim = config_dict["output_kbins"] * 2
-        __, bounds = get_parameter_ranges(config_dict)
-        bounds = torch.Tensor(bounds)
-        self.register_buffer("bounds", bounds)
+        cosmo_file = load_config_file(base_dir + config_dict["cosmo_dir"])
+        __, bounds = get_parameter_ranges(cosmo_file)
+        self.register_buffer("bounds", torch.Tensor(bounds.T))
 
         self.h1 = nn.Linear(config_dict["num_cosmo_params"] + config_dict["num_bias_params"],
                             config_dict["mlp_dims"][0])
@@ -29,8 +30,12 @@ class MLP_single_sample_single_redshift(nn.Module):
         #self.out_ell2 = nn.Linear(config_dict["mlp_dims"][-1], config_dict["output_kbins"])
         self.h2 = nn.Linear(config_dict["mlp_dims"][-1], output_dim)
 
+    # TODO: Find a better fix than requiring this function
+    def set_normalizations(self, output_normalizations):
+        print("This is a redundant function right now")
+
     def normalize(self, params):
-        return (params - self.bounds[:,0]) / (self.bounds[:,1] - self.bounds[:,0])
+        return (params - self.bounds[0]) / (self.bounds[1] - self.bounds[0])
 
     def forward(self, X):
         X = self.normalize(X)
