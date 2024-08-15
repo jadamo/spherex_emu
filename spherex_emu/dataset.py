@@ -12,8 +12,8 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         
         self._load_data(data_dir, type, frac)
         self._set_normalization(data_dir, type)
-        self.pk = normalize(self.pk, self.output_normalizations)
-        self.pk = self.pk.view(-1, self.num_zbins * self.num_samples, self.num_ells * self.num_kbins)
+        #self.pk = normalize(self.pk, self.output_normalizations)
+        #self.pk = self.pk.view(-1, self.num_zbins * self.num_samples, self.num_ells * self.num_kbins)
 
     def _load_data(self, data_dir, type, frac):
 
@@ -88,5 +88,5 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
     def get_power_spectra(self, idx):
         
         pk = self.pk[idx].view(self.num_zbins, self.num_samples, self.num_ells, self.num_kbins)
-        pk = un_normalize(pk, self.normalizations).detach().numpy()
+        #pk = un_normalize(pk, self.normalizations).detach().numpy()
         return pk

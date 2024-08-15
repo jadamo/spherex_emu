@@ -9,6 +9,7 @@ training_dir: ../../Data/SPHEREx-Data/Training-Set-EFT-2s-2z/
 cosmo_dir : ./configs/cosmo_pars/eft_2_sample_2_redshift.yaml
 
 model_type : MLP_multi_sample_multi_redshift
+loss_type : mse
 
 num_cosmo_params : 4
 num_bias_params : 1

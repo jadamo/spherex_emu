@@ -4,7 +4,7 @@ from torch.nn import functional as F
 import itertools, math
 
 import spherex_emu.models.blocks as blocks
-from spherex_emu.utils import get_parameter_ranges, load_config_file
+from spherex_emu.utils import get_parameter_ranges, load_config_file, un_normalize
 from spherex_emu.filepaths import base_dir
 
 class MLP_multi_sample_multi_redshift(nn.Module):
@@ -15,9 +15,11 @@ class MLP_multi_sample_multi_redshift(nn.Module):
         output_dim = config_dict["output_kbins"] * 2
         self.num_zbins = config_dict["num_zbins"]
         self.num_spectra = config_dict["num_samples"] +  math.comb(config_dict["num_samples"], 2)
+        self.num_kbins = config_dict["output_kbins"]
         self.num_cosmo_params = config_dict["num_cosmo_params"]
         self.num_bias_params  = config_dict["num_bias_params"]
-        
+        self.output_normalizations = None
+
         cosmo_file = load_config_file(base_dir + config_dict["cosmo_dir"])
         __, bounds = get_parameter_ranges(cosmo_file)
         self.register_buffer("bounds", self.organize_params(torch.Tensor(bounds.T)))
@@ -38,6 +40,9 @@ class MLP_multi_sample_multi_redshift(nn.Module):
         #self.out_ell1 = nn.Linear(config_dict["mlp_dims"][-1], config_dict["output_kbins"])
         #self.out_ell2 = nn.Linear(config_dict["mlp_dims"][-1], config_dict["output_kbins"])
         self.h2 = blocks.linear_with_channels(config_dict["mlp_dims"][-1], output_dim, self.num_zbins*self.num_spectra)
+
+    def set_normalizations(self, output_normalizations):
+        self.output_normalizations = output_normalizations
 
     # NOTE: This function assumes that the bounds are the same for every redshift bin
     def normalize(self, params):
@@ -73,5 +78,8 @@ class MLP_multi_sample_multi_redshift(nn.Module):
         for block in self.mlp_blocks:
             X = F.relu(block(X))
         X = torch.sigmoid(self.h2(X))
+
+        X = X.view(-1, self.num_zbins, self.num_spectra, 2, self.num_kbins)
+        X = un_normalize(X, self.output_normalizations)
 
         return X

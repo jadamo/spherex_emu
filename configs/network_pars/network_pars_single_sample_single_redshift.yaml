@@ -7,6 +7,7 @@ training_dir: /home/joeadamo/Research/Data/SPHEREx-Data/Training-Set-EFT-1t-1z/
 cosmo_dir : ./configs/cosmo_pars/eft_single_sample_single_redshift.yaml
 
 model_type : MLP_single_sample_single_redshift
+loss_type : mse
 
 num_cosmo_params : 4
 num_bias_params : 1 # The number of nuisance parameters per tracer and redshift bin

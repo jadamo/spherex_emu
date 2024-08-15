@@ -44,7 +44,7 @@ def test_multi_sample_multi_redshift_network():
     test_output = test_emulator.model(test_input)
 
     assert torch.all(test_output >= 0) and torch.all(test_output <= 1.)
-    assert test_output.shape[:] == (1, 6, 2*test_emulator.output_kbins)
+    assert test_output.shape == (1, 2, 3, 2, 25)
 
     # do the same as above except now pass it some more realistic parameters
     test_params = np.array([2.100e-9, 5., 0.6777, 0.1200, 2.0, 1.5, 1.4, 1.3])

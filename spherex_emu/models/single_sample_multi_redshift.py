@@ -38,6 +38,10 @@ class MLP_single_sample_multi_redshift(nn.Module):
         #self.out_ell2 = nn.Linear(config_dict["mlp_dims"][-1], config_dict["output_kbins"])
         self.h2 = blocks.linear_with_channels(config_dict["mlp_dims"][-1], output_dim, self.num_zbins)
 
+    # TODO: Find a better fix than requiring this function
+    def set_normalizations(self, output_normalizations):
+        print("This is a redundant function right now")
+
     # NOTE: This function assumes that the bounds are the same for every redshift bin
     def normalize(self, params):
         return (params - self.bounds[0]) / (self.bounds[1] - self.bounds[0])

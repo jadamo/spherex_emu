@@ -2,6 +2,7 @@ import yaml, os
 from scipy.stats import qmc
 from torch.nn import functional as F
 import numpy as np
+import torch
 
 def load_config_file(config_file:str):
     """loads in the emulator config file as a dictionary object
@@ -149,7 +150,24 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
                 params=all_params[valid_end:test_end], 
                 pk=all_pk[valid_end:test_end])    
 
-def calc_avg_loss(net, data_loader):
+def mse_loss(predict, target, invcov=None):
+    return F.mse_loss(predict, target, reduction="sum")
+
+def delta_chi_squared(predict, target, invcov):
+
+    delta = torch.transpose(predict - target, 3, 4) # (b,nz,nps,nl,nk) -> (b, nz, nps, nk, nl)
+    (_, nz, nps, nk, nl) = delta.shape
+    delta = delta.reshape((-1, nz, nps*nk*nl)) # (nz, nps, nk, nl) --> (nz, nps*nk*nl) 
+    
+    delta_row = delta[:, :, None, :,] # (b, nz, 1, nps*nk*nl) 
+    delta_col = delta[:, :, :, None,] # (b, nz, nps*nk*nl, 1) 
+
+    # NOTE Matrix multiplication is for the last two indices; element wise for all other indices.
+    chi2_component = torch.matmul(delta_row, torch.matmul(invcov, delta_col))[..., 0, 0] # invcov is (nz, nps*nk*nl, nps*nk*nl)
+    chi2 = torch.sum(chi2_component)
+    return abs(chi2)
+
+def calc_avg_loss(net, data_loader, invcov, loss_function):
     """run thru the given data set and returns the average loss value"""
 
     net.eval()
@@ -158,7 +176,7 @@ def calc_avg_loss(net, data_loader):
         #params = data_loader.dataset.get_repeat_params(batch[2], data_loader.dataset.num_zbins, data_loader.dataset.num_samples)
         params = batch[0]
         prediction = net(params)
-        avg_loss += F.mse_loss(prediction, batch[1], reduction="sum").item()
+        avg_loss += loss_function(prediction, batch[1], invcov).item()
 
     avg_loss /= len(data_loader)
     return avg_loss
