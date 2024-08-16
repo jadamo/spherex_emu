@@ -12,6 +12,7 @@ from spherex_emu.utils import prepare_ps_inputs, load_config_file, fgrowth
 #Creates linear power spectra from priors - input into galaxy ps class
 def get_power_spectrum(params, kmin, kmax, num_kbins, num_samples, z_eff):
 
+    params[0] = params[0] * 100
     num_spectra = num_samples + comb(num_samples, 2)
     
     num_cosmo_params = 5
@@ -21,15 +22,16 @@ def get_power_spectrum(params, kmin, kmax, num_kbins, num_samples, z_eff):
     
     for z_idx in range(len(z_eff)):
         z = z_eff[z_idx]
-        H0, ombh2, omch2, As, ns = params[0]*100, params[1], params[2], params[3], params[4]
+        H0, ombh2, omch2, As, ns = params[0], params[1], params[2], params[3], params[4]
         pars = camb.CAMBparams()
         pars.set_cosmology(H0=H0, ombh2=ombh2, omch2=omch2)
         pars.InitPower.set_params(As=As, ns=ns)
-        pars.set_matter_power(redshifts=[z], kmax=kmax) #sets redshift and mode for ps
+        pars.set_matter_power(redshifts=[z], kmax=2.0) #sets redshift and mode for ps
         pars.NonLinear = model.NonLinear_none #set to be linear
         results = camb.get_results(pars)
         kh, z_camb, pk_lin = results.get_matter_power_spectrum(minkh=kmin, maxkh=kmax, npoints=num_kbins) #pk is 2 values 
         
+        print(pk_lin[0])
         Om0 = results.get_Omega("cdm", 0) + results.get_Omega("baryon", 0)
         f = fgrowth(z, Om0)
         k = kh
@@ -46,7 +48,7 @@ def get_power_spectrum(params, kmin, kmax, num_kbins, num_samples, z_eff):
             nonlin = CalcGalaxyPowerSpec(f,pk_lin[0],kh,bias1,bias2,params[:num_cosmo_params])
             pk[z_idx, sample_idx, 0, :] = nonlin.get_nonlinear_ps(0)
             pk[z_idx, sample_idx, 1, :] = nonlin.get_nonlinear_ps(2)
-    
+            sample_idx+=1
     return k, pk
 
 def main():
@@ -68,7 +70,7 @@ def main():
     param_vector = prepare_ps_inputs(alternate_params, cosmo_dict, 2, len(z_eff))
     k, pk = get_power_spectrum(param_vector, kmin, kmax, kbins, num_samples, z_eff)
     
-    np.save(filepaths.data_dir+"ps_tns_fid.npy", pk)
+    np.save(filepaths.data_dir+"pk_tns_fid.npy", pk)
 
     # #Don't save output of get_linps to results, then to these arrays
     # #instead, I save the output directly to the arrays
