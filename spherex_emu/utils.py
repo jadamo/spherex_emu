@@ -1,5 +1,6 @@
 import yaml, os
 from scipy.stats import qmc
+from scipy.special import hyp2f1
 from torch.nn import functional as F
 import numpy as np
 import torch
@@ -60,8 +61,6 @@ def prepare_ps_inputs(sample, cosmo_dict, num_spectra, num_zbins):
             sub_vector = []
             for pname in list(cosmo_dict["bias_param_names"]):
                 key = pname+"_"+str(isample)+"_"+str(iz)
-                # for name in list(sample.keys()):
-                #     if name == pname+"_"+str(isample)+"_"+str(iz): key = name
 
                 if key in sample:
                     sub_vector.append(sample[key])
@@ -69,11 +68,27 @@ def prepare_ps_inputs(sample, cosmo_dict, num_spectra, num_zbins):
                     sub_vector.append(sample[pname])
                 elif key in cosmo_dict["bias_params"]:
                     sub_vector.append(cosmo_dict["bias_params"][key]["value"])
+                # special cases when bias parameters depend on other bias parameter values (TNS model)
+                elif pname == "bs2" and cosmo_dict["bias_params"][pname]["value"] == -99:
+                    sub_vector.append((-4./7)*(cosmo_dict["bias_params"]["b1"+"_"+str(isample)+"_"+str(iz)]["value"]-1))
+                elif pname == "b3nl" and cosmo_dict["bias_params"][pname]["value"] == -99:
+                    sub_vector.append((32./315)*(cosmo_dict["bias_params"]["b1"+"_"+str(isample)+"_"+str(iz)]["value"]-1))
                 else:
                     sub_vector.append(cosmo_dict["bias_params"][pname]["value"])
             param_vector += sub_vector
 
     return np.array(param_vector)
+
+def fgrowth(z,Om0):
+    """Calculates the LambdaCDM growth rate f_growth(z, Om0)
+
+    Args:
+        z: cosmological redshift
+        Om0: matter density parameter
+    """
+    return(1. + 6*(Om0-1)*hyp2f1(4/3., 2, 17/6., (1-1/Om0)/(1+z)**3)
+                /( 11*Om0*(1+z)**3*hyp2f1(1/3., 1, 11/6., (1-1/Om0)/(1+z)**3) ))
+
 
 def make_latin_hypercube(priors, N):
     """Generates a latin hypercube of N samples with lower and upper bounds given by priors"""
