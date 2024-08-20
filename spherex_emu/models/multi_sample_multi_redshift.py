@@ -96,6 +96,7 @@ class Transformer(nn.Module):
 
         self.input_dim = config_dict["num_cosmo_params"] + (self.num_zbins * config_dict["num_samples"] * config_dict["num_bias_params"])
         self.output_dim = self.num_zbins * self.num_spectra * 2 * self.num_kbins
+        self.output_normalizations = None
 
         cosmo_file = load_config_file(base_dir + config_dict["cosmo_dir"])
         __, bounds = get_parameter_ranges(cosmo_file)

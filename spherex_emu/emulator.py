@@ -203,8 +203,8 @@ class pk_emulator():
             
             # set normalization based on min and max values in the training set
             if key == "training":
-                self.output_normalizations = data.output_normalizations
-                self.model.set_normalizations(data.output_normalizations)
+                self.output_normalizations = data.output_normalizations.to(self.device)
+                self.model.set_normalizations(self.output_normalizations)
 
             if return_dataloader: return data_loader
             else: return data
