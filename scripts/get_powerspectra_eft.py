@@ -31,7 +31,7 @@ def main():
     galaxy_ps = theory(k, ells, param_vector)
 
     print(galaxy_ps.shape)
-    np.save(filepaths.data_dir+"ps_fid.npy", galaxy_ps)
+    np.save(filepaths.data_dir+"ps_eft_fid.npy", galaxy_ps)
 
 if __name__ == "__main__":
     main()
