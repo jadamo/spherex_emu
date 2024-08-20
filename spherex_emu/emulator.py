@@ -7,7 +7,7 @@ import yaml, warnings, math, os
 from spherex_emu.models import blocks
 from spherex_emu.models.single_sample_single_redshift import MLP_single_sample_single_redshift
 from spherex_emu.models.single_sample_multi_redshift import MLP_single_sample_multi_redshift
-from spherex_emu.models.multi_sample_multi_redshift import MLP_multi_sample_multi_redshift
+from spherex_emu.models.multi_sample_multi_redshift import *
 from spherex_emu.dataset import pk_galaxy_dataset
 from spherex_emu.utils import load_config_file, calc_avg_loss, un_normalize, delta_chi_squared, mse_loss
 from spherex_emu.filepaths import base_dir, data_dir
@@ -121,6 +121,8 @@ class pk_emulator():
             self.model = MLP_single_sample_multi_redshift(self.config_dict).to(self.device)
         elif self.model_type == "MLP_multi_sample_multi_redshift":
             self.model = MLP_multi_sample_multi_redshift(self.config_dict).to(self.device)
+        elif self.model_type == "Transformer":
+            self.model = Transformer(self.config_dict).to(self.device)
         else:
             print("ERROR: Invalid value for model type")
             raise KeyError
