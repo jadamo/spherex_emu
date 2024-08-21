@@ -168,6 +168,10 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
 def mse_loss(predict, target, invcov=None):
     return F.mse_loss(predict, target, reduction="sum")
 
+def hyperbolic_loss(predict, target, invcov=None):
+    mse = F.mse_loss(predict, target, reduction="sum")
+    return torch.sqrt(1 + 2*(mse**2))
+
 def delta_chi_squared(predict, target, invcov):
 
     delta = torch.transpose(predict - target, 3, 4) # (b,nz,nps,nl,nk) -> (b, nz, nps, nk, nl)

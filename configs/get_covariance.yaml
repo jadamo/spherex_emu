@@ -1,7 +1,7 @@
 run_name: 'redshift_bins_2_samples_2'
 
 #input_dir: './configs/'
-input_dir: "/Users/JoeyA/Research/SPHEREx/spherex_emu/configs/"
+input_dir: "/home/joeadamo/Research/SPHEREx/spherex_emu/configs/"
 cosmo_par_file: 'cosmo_pars/planck2018_fiducial.yaml'
 cosmo_par_fid_file: 'cosmo_pars/planck2018_fiducial.yaml'
 survey_par_file: 'survey_pars/survey_pars_2_sample_2_redshift.yaml'
@@ -13,7 +13,7 @@ PowerSpectrumMultipoleEFT:
   nk: 25 # number of k points (to be changed into bins)
   nmu: 8 # number of mu bins
   kmin: 0.007 # equivalent to 0.01 h/Mpc
-  kmax: 0.175 # equivalent to 0.5 h/Mpc
+  kmax: 0.175 # equivalent to 0.25 h/Mpc
   mu_min: -1
   mu_max: 1
   multipole_info:
@@ -39,9 +39,9 @@ do_plot: False
 fisher:
   data_dir: './data/cov_2_sample_2_redshift/fisher/'
 
-  do_derivatives: False
+  do_derivatives: True
   do_cov: True
-  do_fisher: False
+  do_fisher: True
 
   do_calc_derivatives: True
   do_calc_cov: True # if do_calc_cov = True, invcov_path is ignored

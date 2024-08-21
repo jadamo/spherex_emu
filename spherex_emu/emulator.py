@@ -2,14 +2,15 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import numpy as np
-import yaml, warnings, math, os
+import yaml, math, os
 
 from spherex_emu.models import blocks
 from spherex_emu.models.single_sample_single_redshift import MLP_single_sample_single_redshift
 from spherex_emu.models.single_sample_multi_redshift import MLP_single_sample_multi_redshift
 from spherex_emu.models.multi_sample_multi_redshift import *
 from spherex_emu.dataset import pk_galaxy_dataset
-from spherex_emu.utils import load_config_file, calc_avg_loss, un_normalize, delta_chi_squared, mse_loss
+from spherex_emu.utils import load_config_file, calc_avg_loss, \
+                              un_normalize, delta_chi_squared, mse_loss, hyperbolic_loss
 from spherex_emu.filepaths import base_dir, data_dir
 
 class pk_emulator():
@@ -101,6 +102,24 @@ class pk_emulator():
         pk = pk.to("cpu").detach().numpy()
         return pk
 
+    def load_data(self, key, data_frac=1.0, return_dataloader=True, data_dir=""):
+
+        if data_dir != "": dir = data_dir
+        else :             dir = base_dir+self.training_dir
+
+        if key in ["training", "validation", "testing"]:
+            data = pk_galaxy_dataset(dir, key, data_frac)
+            data.to(self.device)
+            data_loader = torch.utils.data.DataLoader(data, batch_size=self.config_dict["batch_size"], shuffle=True)
+            
+            # set normalization based on min and max values in the training set
+            if key == "training":
+                self.output_normalizations = data.output_normalizations.to(self.device)
+                self.model.set_normalizations(self.output_normalizations)
+
+            if return_dataloader: return data_loader
+            else: return data
+
     # -----------------------------------------------------------
     # Helper methods: Not meant to be called by the user directly
     # -----------------------------------------------------------
@@ -138,9 +157,9 @@ class pk_emulator():
 
     def _init_inverse_covariance(self):
         """Loads the data covariance matrix for use in certain loss functions"""
-        cov_file = data_dir+"cov_"+str(self.num_samples)+"_sample_"+str(self.num_zbins)+"_redshift/"
+        cov_file = data_dir+"cov_"+str(self.num_samples)+"_sample_"+str(self.num_zbins)+"_redshift/invcov_reshape.npy"
         if os.path.exists(cov_file):
-            self.invcov = torch.from_numpy(np.load(cov_file+"invcov_reshape.npy")).to(self.device).to(torch.float32)
+            self.invcov = torch.from_numpy(np.load(cov_file)).to(self.device).to(torch.float32)
         else:
             self.invcov = torch.eye(2*self.num_spectra*self.output_kbins).unsqueeze(0)
             self.invcov = self.invcov.repeat(self.num_zbins, 1, 1)
@@ -151,6 +170,8 @@ class pk_emulator():
             self.loss_function = delta_chi_squared
         elif self.loss_type == "mse":
             self.loss_function = mse_loss
+        elif self.loss_type == "hyperbolic":
+            self.loss_function = hyperbolic_loss
         else:
             print("ERROR: Invalid loss function type")
             raise KeyError
@@ -193,21 +214,6 @@ class pk_emulator():
 
         torch.save(self.output_normalizations, base_dir+self.save_dir+"output_normalization.dat")
         torch.save(self.model.state_dict(), base_dir+self.save_dir+'network.params')
-
-    def _load_data(self, key, data_frac=1.0, return_dataloader=True):
-
-        if key in ["training", "validation", "testing"]:
-            data = pk_galaxy_dataset(base_dir+self.training_dir, key, data_frac)
-            data.to(self.device)
-            data_loader = torch.utils.data.DataLoader(data, batch_size=self.config_dict["batch_size"], shuffle=True)
-            
-            # set normalization based on min and max values in the training set
-            if key == "training":
-                self.output_normalizations = data.output_normalizations.to(self.device)
-                self.model.set_normalizations(self.output_normalizations)
-
-            if return_dataloader: return data_loader
-            else: return data
 
     def _check_params(self, params):
         """checks that input parameters are in the expected format and within the specified boundaries"""
