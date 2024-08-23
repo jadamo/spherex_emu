@@ -54,7 +54,6 @@ class block_resmlp(nn.Module):
     
         if skip_connection:
             self.skip_layer = nn.Linear(input_dim, output_dim)
-            self.bn = nn.BatchNorm1d(output_dim)
 
     def forward(self, X):
         Y = self.layers(X)
@@ -77,6 +76,7 @@ class block_resnet(nn.Module):
     
         if skip_connection:
             self.skip_layer = nn.Linear(input_dim, output_dim)
+            self.bn = nn.BatchNorm1d(output_dim)
 
     def forward(self, X):
         Y = self.layers(X)

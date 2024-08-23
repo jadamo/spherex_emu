@@ -4,7 +4,7 @@ from torch.nn import functional as F
 import numpy as np
 import os
 
-from spherex_emu.utils import normalize, un_normalize, load_config_file
+from spherex_emu.utils import normalize_cosmo_params, un_normalize, load_config_file
 
 class pk_galaxy_dataset(torch.utils.data.Dataset):
 
@@ -14,6 +14,7 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self._set_normalization(data_dir, type)
         #self.pk = normalize(self.pk, self.output_normalizations)
         #self.pk = self.pk.view(-1, self.num_zbins * self.num_samples, self.num_ells * self.num_kbins)
+        self.pk = self.pk.view(-1, self.num_zbins, self.num_samples*self.num_ells*self.num_kbins)
 
     def _load_data(self, data_dir, type, frac):
 

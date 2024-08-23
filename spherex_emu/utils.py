@@ -169,8 +169,7 @@ def mse_loss(predict, target, invcov=None):
     return F.mse_loss(predict, target, reduction="sum")
 
 def hyperbolic_loss(predict, target, invcov=None):
-    mse = F.mse_loss(predict, target, reduction="sum")
-    return torch.sqrt(1 + 2*(mse**2))
+    return torch.mean(torch.sqrt(1 + 2*(predict - target)**2)) - 1
 
 def delta_chi_squared(predict, target, invcov):
 
@@ -186,25 +185,34 @@ def delta_chi_squared(predict, target, invcov):
     chi2 = torch.sum(chi2_component)
     return abs(chi2)
 
-def calc_avg_loss(net, data_loader, invcov, loss_function):
+def calc_avg_loss(net, data_loader, input_normalizations, invcov, loss_function):
     """run thru the given data set and returns the average loss value"""
 
     net.eval()
     avg_loss = 0.
     for (i, batch) in enumerate(data_loader):
         #params = data_loader.dataset.get_repeat_params(batch[2], data_loader.dataset.num_zbins, data_loader.dataset.num_samples)
-        params = batch[0]
+        params = normalize_cosmo_params(batch[0], input_normalizations)
         prediction = net(params)
         avg_loss += loss_function(prediction, batch[1], invcov).item()
 
     avg_loss /= len(data_loader)
     return avg_loss
 
-def normalize(X, normalizations):
+def normalize_cosmo_params(params, normalizations):
     min_v = normalizations[0]
     max_v = normalizations[1]
-    return (X - min_v) / (max_v - min_v)
+    return (params - min_v) / (max_v - min_v)
 
+def un_normalize_power_spectrum(ps, ps_fid, inv_cov):
+
+    ps_new = torch.zeros_like(ps)
+    for z in range(ps_new.shape[1]):
+        ps_new[:,z] = (ps[:,z] / torch.sqrt(torch.diag(inv_cov[z]))) + ps_fid[z]
+                       
+    return ps_new
+
+# TODO: Remove or rename function
 def un_normalize(X, normalizations):
     min_v = normalizations[0]
     max_v = normalizations[1]

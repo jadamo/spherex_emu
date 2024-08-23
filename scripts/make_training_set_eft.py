@@ -102,8 +102,17 @@ def main():
     print("Number of varied parameters:", len(param_names))
     print("Saving to", save_dir)
 
+    # first, generate the power spectrum at the fiducial cosmology
+    print("Generating fiducial power spectrum...")
+    pk, result = get_power_spectrum({}, param_names, cosmo_dict, ps_config)
+    if result == 0:
+        np.save(save_dir+"ps_eft_fid.npy", pk)
+    else:
+        print("ERROR! failed to calculate fiducial power spectrum!")
+
     # # initialize pool for multiprocessing
     t1 = time.time()
+    print("Generating training set...")
     p = Pool(processes=N_PROC)
     pk, result = zip(*p.starmap(get_power_spectrum, 
                       zip(samples, repeat(param_names), repeat(cosmo_dict), repeat(ps_config))))

@@ -39,9 +39,9 @@ do_plot: False
 fisher:
   data_dir: './data/cov_2_sample_2_redshift/fisher/'
 
-  do_derivatives: True
+  do_derivatives: False
   do_cov: True
-  do_fisher: True
+  do_fisher: False
 
   do_calc_derivatives: True
   do_calc_cov: True # if do_calc_cov = True, invcov_path is ignored

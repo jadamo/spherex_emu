@@ -11,26 +11,30 @@ def main():
     config_file = filepaths.network_pars_dir + "network_pars_2_sample_2_redshift.yaml"
     emulator = pk_emulator(config_file)
 
-    train_data = emulator._load_data("training", 1., False)
+    train_data = emulator.load_data("training", 1., False)
 
     data = train_data.pk
     
-    cov = torch.zeros((train_data.num_zbins, train_data.num_samples*train_data.num_ells*train_data.num_kbins,
+    inv_cov = torch.zeros((train_data.num_zbins, train_data.num_samples*train_data.num_ells*train_data.num_kbins,
                                              train_data.num_samples*train_data.num_ells*train_data.num_kbins))
 
     for z in range(train_data.num_zbins):
         print("Estimating cov for redshif bin", z)
         flat_data = data.view(-1,train_data.num_zbins,train_data.num_samples*train_data.num_ells*train_data.num_kbins)
 
-        cov[z] = torch.cov(flat_data[:,z].T)
+        std = torch.std(flat_data[:,z], 0)
+        cov = torch.diag(std**2)
+        inv_cov[z] = torch.linalg.inv(cov)
+
+        #cov[z] = torch.cov(flat_data[:,z].T)
         #print(flat_data[:,z].T.shape)
-    
+
         try:
-            L = torch.linalg.cholesky(cov[z])
+            L = torch.linalg.cholesky(cov)
         except:
             print("WARNING: covariance is not positive definite!")
             
     print("Done!")
-    torch.save(cov, filepaths.base_dir+emulator.config_dict["training_dir"]+"data_cov.dat")
+    torch.save(inv_cov, filepaths.base_dir+emulator.config_dict["training_dir"]+"data_invcov.dat")
 if __name__ == "__main__":
     main()
