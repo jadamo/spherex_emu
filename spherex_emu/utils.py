@@ -185,7 +185,7 @@ def delta_chi_squared(predict, target, invcov):
     chi2 = torch.sum(chi2_component)
     return abs(chi2)
 
-def calc_avg_loss(net, data_loader, input_normalizations, invcov, loss_function):
+def calc_avg_loss(net, data_loader, input_normalizations, ps_fid, invcov, loss_function):
     """run thru the given data set and returns the average loss value"""
 
     net.eval()
@@ -194,6 +194,7 @@ def calc_avg_loss(net, data_loader, input_normalizations, invcov, loss_function)
         #params = data_loader.dataset.get_repeat_params(batch[2], data_loader.dataset.num_zbins, data_loader.dataset.num_samples)
         params = normalize_cosmo_params(batch[0], input_normalizations)
         prediction = net(params)
+        prediction = un_normalize_power_spectrum(prediction, ps_fid, invcov)
         avg_loss += loss_function(prediction, batch[1], invcov).item()
 
     avg_loss /= len(data_loader)

@@ -30,8 +30,8 @@ split_dim              : 16
 num_epochs: 350
 learning_rate: [4.65e-04, 1.0e-4]
 batch_size: 100
-training_set_fraction : 1.0
+training_set_fraction : 0.1
 early_stopping_epochs: 25
 weight_initialization: He
 optimizer_type : Adam
-use_gpu : False
+use_gpu : True

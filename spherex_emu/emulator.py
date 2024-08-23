@@ -89,8 +89,8 @@ class pk_emulator():
             for epoch in range(self.num_epochs):
 
                 self._train_one_epoch(train_loader)
-                self.train_loss.append(calc_avg_loss(self.model, train_loader, self.input_normalizations, self.invcov, self.loss_function))
-                self.valid_loss.append(calc_avg_loss(self.model, valid_loader, self.input_normalizations, self.invcov, self.loss_function))
+                self.train_loss.append(calc_avg_loss(self.model, train_loader, self.input_normalizations, self.ps_fid, self.invcov, self.loss_function))
+                self.valid_loss.append(calc_avg_loss(self.model, valid_loader, self.input_normalizations, self.ps_fid, self.invcov, self.loss_function))
 
                 if self.valid_loss[-1] < best_loss:
                     best_loss = self.valid_loss[-1]
@@ -150,7 +150,7 @@ class pk_emulator():
         try:
             cosmo_dict = load_config_file(base_dir+self.cosmo_dir)
             __, bounds = get_parameter_ranges(cosmo_dict)
-            self.input_normalizations = torch.Tensor(bounds.T)
+            self.input_normalizations = torch.Tensor(bounds.T).to(self.device)
         except IOError:
             self.input_normalizations = torch.vstack((torch.zeros((self.num_cosmo_params + (self.num_samples*self.num_zbins*self.num_bias_params))),
                                                       torch.ones((self.num_cosmo_params + (self.num_samples*self.num_zbins*self.num_bias_params))))).to(self.device)
@@ -172,9 +172,9 @@ class pk_emulator():
     def _init_inverse_covariance(self):
         """Loads the inverse data covariance matrix for use in certain loss functions and normalizations"""
         #cov_file = data_dir+"cov_"+str(self.num_samples)+"_sample_"+str(self.num_zbins)+"_redshift/invcov_reshape.npy"
-        cov_file = base_dir+self.training_dir+"invcov.npy"
+        cov_file = base_dir+self.training_dir+"invcov.dat"
         if os.path.exists(cov_file):
-            self.invcov = torch.from_numpy(np.load(cov_file)).to(self.device).to(torch.float32)
+            self.invcov = torch.load(cov_file).to(self.device).to(torch.float32)
         else:
             self.invcov = torch.eye(2*self.num_spectra*self.num_kbins).unsqueeze(0)
             self.invcov = self.invcov.repeat(self.num_zbins, 1, 1)

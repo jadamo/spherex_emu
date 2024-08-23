@@ -34,7 +34,7 @@ def main():
         except:
             print("WARNING: covariance is not positive definite!")
             
-    print("Done!")
-    torch.save(inv_cov, filepaths.base_dir+emulator.config_dict["training_dir"]+"data_invcov.dat")
+    print("Done! Saving to", filepaths.base_dir+emulator.config_dict["training_dir"]+"invcov.dat")
+    torch.save(inv_cov, filepaths.base_dir+emulator.config_dict["training_dir"]+"invcov.dat")
 if __name__ == "__main__":
     main()
