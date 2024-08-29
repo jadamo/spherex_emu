@@ -1,5 +1,4 @@
 import numpy as np
-import scipy.stats as sp # for calculating standard error
 import camb, itertools
 from camb import model
 from math import comb
@@ -9,7 +8,7 @@ from spherex_emu.gpsclass import CalcGalaxyPowerSpec
 import spherex_emu.filepaths as filepaths
 from spherex_emu.utils import prepare_ps_inputs, load_config_file, fgrowth
 
-#Creates linear power spectra from priors - input into galaxy ps class
+#Creates galaxy power spectra from a set of input parameters - input into galaxy ps class
 def get_power_spectrum(params, kmin, kmax, num_kbins, num_samples, z_eff):
 
     params[0] = params[0] * 100
@@ -31,7 +30,6 @@ def get_power_spectrum(params, kmin, kmax, num_kbins, num_samples, z_eff):
         results = camb.get_results(pars)
         kh, z_camb, pk_lin = results.get_matter_power_spectrum(minkh=kmin, maxkh=kmax, npoints=num_kbins) #pk is 2 values 
         
-        print(pk_lin[0])
         Om0 = results.get_Omega("cdm", 0) + results.get_Omega("baryon", 0)
         f = fgrowth(z, Om0)
         k = kh
