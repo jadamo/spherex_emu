@@ -205,6 +205,13 @@ def normalize_cosmo_params(params, normalizations):
     max_v = normalizations[1]
     return (params - min_v) / (max_v - min_v)
 
+def normalize_power_spectrum(ps, ps_fid, inv_cov):
+    ps_new = torch.zeros_like(ps)
+    for z in range(ps_new.shape[1]):
+        ps_new[:,z] = (ps[:,z] - ps_fid[z]) * torch.sqrt(torch.diag(inv_cov[z]))
+                       
+    return ps_new
+
 def un_normalize_power_spectrum(ps, ps_fid, inv_cov):
 
     ps_new = torch.zeros_like(ps)
