@@ -11,7 +11,7 @@ class MLP_single_sample_single_redshift(nn.Module):
     def __init__(self, config_dict):
         super().__init__()
 
-        output_dim = config_dict["output_kbins"] * 2
+        output_dim = config_dict["num_kbins"] * 2
         cosmo_file = load_config_file(base_dir + config_dict["cosmo_dir"])
         __, bounds = get_parameter_ranges(cosmo_file)
         self.register_buffer("bounds", torch.Tensor(bounds.T))
@@ -26,8 +26,8 @@ class MLP_single_sample_single_redshift(nn.Module):
                                         config_dict["num_block_layers"],
                                         config_dict["use_skip_connection"]))
         
-        #self.out_ell1 = nn.Linear(config_dict["mlp_dims"][-1], config_dict["output_kbins"])
-        #self.out_ell2 = nn.Linear(config_dict["mlp_dims"][-1], config_dict["output_kbins"])
+        #self.out_ell1 = nn.Linear(config_dict["mlp_dims"][-1], config_dict["num_kbins"])
+        #self.out_ell2 = nn.Linear(config_dict["mlp_dims"][-1], config_dict["num_kbins"])
         self.h2 = nn.Linear(config_dict["mlp_dims"][-1], output_dim)
 
     # TODO: Find a better fix than requiring this function

@@ -38,6 +38,27 @@ class linear_with_channels(nn.Module):
         X = X.permute(1, 0, 2) # <- [channels, batch, out] -> [batch, channels, out]
         return X
 
+class block_resmlp(nn.Module):
+
+    def __init__(self, input_dim, output_dim, num_layers,
+                 skip_connection):
+        
+        super().__init__()
+
+        self.layers = nn.Sequential()
+        self.layers.add_module("layer0",    nn.Linear(input_dim, output_dim))
+        self.layers.add_module("ReLU", nn.ReLU())
+        for i in range(num_layers-1):
+            self.layers.add_module("layer"+str(i+1), nn.Linear(output_dim, output_dim))
+            self.layers.add_module("ReLU",      nn.ReLU())
+    
+        if skip_connection:
+            self.skip_layer = nn.Linear(input_dim, output_dim)
+
+    def forward(self, X):
+        Y = self.layers(X)
+        return Y + self.skip_layer(X)
+
 class block_resnet(nn.Module):
     
     def __init__(self, input_dim, output_dim, num_layers,
@@ -84,7 +105,7 @@ class block_parallel_resnet(nn.Module):
         return Y + self.bn(self.skip_layer(X))
 
 
-class Nulti_Headed_Attention(nn.Module):
+class multi_headed_attention(nn.Module):
 
     def __init__(self, hidden_dim, num_heads=2, dropout_prob=0.):
         super().__init__()
@@ -133,41 +154,40 @@ class Nulti_Headed_Attention(nn.Module):
         values  = self.transpose_qkv(self.layer_v(values))
 
         X = self.dot_product_attention(queries, keys, values)
-        X = self.out(self.transpose_output(X))
+        X = X.reshape(-1, self.hidden_dim)
+        X = self.out(X)
         return X
 
-class Block_AddNorm(nn.Module):
+class block_addnorm(nn.Module):
     def __init__(self, shape, dropout_prob=0.):
         super().__init__()
         self.dropoiut = nn.Dropout(dropout_prob)
         self.layerNorm = nn.LayerNorm(shape)
     def forward(self, X, Y):
         return self.layerNorm(self.dropoiut(Y) + X)
-
-class Block_Transformer_Encoder(nn.Module):
+    
+class block_transformer_encoder(nn.Module):
     """
-    Class defining the transformer encoder block used by the emulator
     """
 
-    def __init__(self, hidden_dim, n_heads, dropout_prob=0.):
+    def __init__(self, hidden_dim, num_channels, dropout_prob=0.):
         super().__init__()
         self.hidden_dim = hidden_dim
+        self.num_channels = num_channels
 
         #self.ln1 = nn.LayerNorm(self.hidden_dim)
-        self.attention = Nulti_Headed_Attention(self.hidden_dim, n_heads, dropout_prob)
-        self.addnorm1 = Block_AddNorm(self.hidden_dim, dropout_prob)
+        self.attention = multi_headed_attention(self.hidden_dim, 1, dropout_prob)
+        #self.addnorm1 = block_addnorm(self.hidden_dim, dropout_prob)
 
         #feed-forward network
         #self.ln2 = nn.LayerNorm(self.hidden_dim)
-        self.h1 = nn.Linear(self.hidden_dim, 2*self.hidden_dim)
-        self.h2 = nn.Linear(2*self.hidden_dim, self.hidden_dim)
-        self.addnorm2 = Block_AddNorm(self.hidden_dim, dropout_prob)
+        self.h1 = linear_with_channels(int(self.hidden_dim/num_channels), int(self.hidden_dim/num_channels), num_channels)
+        #self.addnorm2 = block_addnorm(self.hidden_dim, dropout_prob)
 
     def forward(self, X):
-        X = self.addnorm1(X, self.attention(X, X, X))
+        X = X + self.attention(X, X, X)
 
-        Y = F.leaky_relu(self.h1(X))
-        X = self.addnorm2(X, self.h2(Y))
-
+        Y = X.reshape(-1, self.num_channels, int(self.hidden_dim / self.num_channels))
+        Y = F.relu(self.h1(Y))
+        X = X + Y.reshape(-1, self.hidden_dim)
         return X
-

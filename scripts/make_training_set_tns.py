@@ -1,13 +1,15 @@
 # This script generates a training set for the spherex emulator based on Yosuke's EFT power spectrum model
 # Utilizing an embarrasingly parallel code structure
 
-import time, math, yaml
+import time, math, yaml, itertools
+import camb
 import numpy as np
 
 from multiprocessing import Pool
 from itertools import repeat
 
 import ps_theory_calculator
+from spherex_emu.gpsclass import CalcGalaxyPowerSpec
 from spherex_emu.utils import *
 import spherex_emu.filepaths as filepaths 
 
@@ -15,11 +17,14 @@ import spherex_emu.filepaths as filepaths
 # GLOBAL VARIABLES
 #-------------------------------------------------------------------
 
-k = np.linspace(0.01, 0.25, 25)
-
-N = 10000
+N = 10
 #N_PROC=int(os.environ["SLURM_CPUS_ON_NODE"])
-N_PROC=14
+N_PROC=6
+
+# TODO: Place this info in a better location like a survey pars file
+kmin = 0.01
+kmax = 0.25
+kbins = 26 # smallest possible is 4 and has to be even
 
 # fraction of dataset to be partitioned to the training | validation | test sets
 train_frac = 0.8
@@ -27,11 +32,11 @@ valid_frac = 0.1
 test_frac  = 0.1
 
 net_config_file = filepaths.network_pars_dir+"network_pars_2_sample_2_redshift.yaml"
-cosmo_config_file = filepaths.cosmo_pars_dir+"eft_2_sample_2_redshift.yaml"
+cosmo_config_file = filepaths.cosmo_pars_dir+"tns_2_sample_2_redshift.yaml"
 survey_config_file = filepaths.survey_pars_dir+'survey_pars_2_sample_2_redshift.yaml'
 
-save_dir = "/home/joeadamo/Research/Data/SPHEREx-Data/Training-Set-EFT-2s-2z/"
--range
+save_dir = "/Users/JoeyA/Research/Data/SPHEREx-Data/Training-Set-TNS-2s-2z/"
+
 #-------------------------------------------------------------------
 # FUNCTIONS
 #-------------------------------------------------------------------
@@ -53,23 +58,58 @@ def prepare_header_info(param_names, fiducial_cosmology, n_samples):
     header_info["bias_params"] = bias_params
     return header_info
 
+#Creates linear power spectra from priors - input into galaxy ps class
 def get_power_spectrum(sample, param_names, cosmo_dict, ps_config):
 
-    ells = [0, 2]
-    num_samples = ps_config['number_density_table'].shape[0]
+    num_sample_bins = ps_config['number_density_table'].shape[0]
     num_zbins = len(ps_config["redshift_list"])
     sample_dict = dict(zip(param_names, sample))
 
-    param_vector = prepare_ps_inputs(sample_dict, cosmo_dict, num_samples, num_zbins)
+    param_vector = prepare_ps_inputs(sample_dict, cosmo_dict, num_sample_bins, num_zbins)
+
+    param_vector[0] = param_vector[0] * 100
+    num_spectra = num_sample_bins + math.comb(num_sample_bins, 2)
+    
+    num_cosmo_params = 5
+    num_bias_params = 4
+    galaxy_ps = np.zeros((len(ps_config['redshift_list']), num_spectra, 2, kbins))
+    k = np.zeros((kbins)) #number of samples x number of k bins
+    
     try:
-        theory = ps_theory_calculator.PowerSpectrumMultipole1Loop(ps_config)
-        galaxy_ps = theory(k, ells, param_vector)
+        for z_idx in range(len(ps_config['redshift_list'])):
+            z = ps_config['redshift_list'][z_idx]
+            H0, ombh2, omch2, As, ns = param_vector[0], param_vector[1], param_vector[2], param_vector[3], param_vector[4]
+            pars = camb.CAMBparams()
+            pars.set_cosmology(H0=H0, ombh2=ombh2, omch2=omch2)
+            pars.InitPower.set_params(As=As, ns=ns)
+            pars.set_matter_power(redshifts=[z], kmax=2.0) #sets redshift and mode for ps
+            pars.NonLinear = camb.model.NonLinear_none #set to be linear
+            results = camb.get_results(pars)
+            kh, z_camb, pk_lin = results.get_matter_power_spectrum(minkh=kmin, maxkh=kmax, npoints=kbins) #pk is 2 values 
+            
+            Om0 = results.get_Omega("cdm", 0) + results.get_Omega("baryon", 0)
+            f = fgrowth(z, Om0)
+            k = kh
+
+            sample_idx = 0
+            for isample1, isample2 in itertools.product(range(num_sample_bins), repeat=2):
+                if isample1 > isample2: continue
+
+                idx1 = num_cosmo_params + (isample1*num_bias_params) + (z_idx * num_bias_params*num_sample_bins)
+                idx2 = num_cosmo_params + (isample2*num_bias_params) + (z_idx * num_bias_params*num_sample_bins)
+                bias1 = param_vector[idx1:idx1+num_bias_params]
+                bias2 = param_vector[idx2:idx2+num_bias_params]
+
+                nonlin = CalcGalaxyPowerSpec(f,pk_lin[0],kh,bias1,bias2,param_vector[:num_cosmo_params])
+                galaxy_ps[z_idx, sample_idx, 0, :] = nonlin.get_nonlinear_ps(0)
+                galaxy_ps[z_idx, sample_idx, 1, :] = nonlin.get_nonlinear_ps(2)
+                sample_idx+=1
 
         if not np.any(np.isnan(galaxy_ps)): return galaxy_ps, 0
-        else: return np.zeros(2, len(k)), -1
+        else: return np.zeros(num_zbins, num_spectra, 2, kbins), -1
     except:
         print("Power spectrum calculation failed!")
-        return np.zeros(2, len(k)), -1
+        return np.zeros(num_zbins, num_spectra, 2, kbins), -1
 
 #-------------------------------------------------------------------
 # MAIN
@@ -102,17 +142,8 @@ def main():
     print("Number of varied parameters:", len(param_names))
     print("Saving to", save_dir)
 
-    # first, generate the power spectrum at the fiducial cosmology
-    print("Generating fiducial power spectrum...")
-    pk, result = get_power_spectrum({}, param_names, cosmo_dict, ps_config)
-    if result == 0:
-        np.save(save_dir+"ps_eft_fid.npy", pk)
-    else:
-        print("ERROR! failed to calculate fiducial power spectrum!")
-
     # # initialize pool for multiprocessing
     t1 = time.time()
-    print("Generating training set...")
     p = Pool(processes=N_PROC)
     pk, result = zip(*p.starmap(get_power_spectrum, 
                       zip(samples, repeat(param_names), repeat(cosmo_dict), repeat(ps_config))))
@@ -144,7 +175,7 @@ def main():
     print("{:0.0f} ({:0.2f}%) power spectra failed to compute".format(fail_compute, 100.*fail_compute / N))
 
     organize_training_set(save_dir, train_frac, valid_frac, test_frac,
-                          samples.shape[1], len(z_eff), num_spectra, len(k), True)
+                          samples.shape[1], len(z_eff), num_spectra, kbins, True)
 
 if __name__ == "__main__":
     main()
