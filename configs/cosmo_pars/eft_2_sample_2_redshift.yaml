@@ -37,11 +37,11 @@ cosmo_params:
       max: 1.0
   omega_b: 
     value: 0.02237
-    prior:
-      min: 0.05
-      max: 0.2
   omega_c:
     value: 0.1200
+    prior:
+      min: 0.06
+      max: 0.2
   As:
     value: 2.1e-9
     prior:
