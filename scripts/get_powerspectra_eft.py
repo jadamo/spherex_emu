@@ -25,7 +25,7 @@ def main():
 
     param_vector = prepare_ps_inputs(alternate_params, cosmo_dict, 2, len(z_eff))
     k = np.linspace(0.01, 0.25, 25)
-    ells = [0, 2]
+    ells = [0, 2, 4]
 
     theory = ps_theory_calculator.PowerSpectrumMultipole1Loop(ps_config)
     galaxy_ps = theory(k, ells, param_vector)
