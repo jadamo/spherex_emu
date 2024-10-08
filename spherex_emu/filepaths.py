@@ -1,4 +1,4 @@
-# -----------------------------------------------
+#-----------------------------------------------
 # this file contains all necesary file paths to use this repository
 import os
 

@@ -17,20 +17,23 @@ import spherex_emu.filepaths as filepaths
 
 k = np.linspace(0.01, 0.25, 25)
 
-N = 10000
+N = 100000
 #N_PROC=int(os.environ["SLURM_CPUS_ON_NODE"])
-N_PROC=14
+N_PROC=6
 
 # fraction of dataset to be partitioned to the training | validation | test sets
 train_frac = 0.8
 valid_frac = 0.1
 test_frac  = 0.1
 
-net_config_file = filepaths.network_pars_dir+"network_pars_2_sample_2_redshift.yaml"
-cosmo_config_file = filepaths.cosmo_pars_dir+"eft_2_sample_2_redshift.yaml"
-survey_config_file = filepaths.survey_pars_dir+'survey_pars_2_sample_2_redshift.yaml'
+net_config_file = filepaths.network_pars_dir+"network_pars_single_sample_single_redshift.yaml"
+cosmo_config_file = filepaths.cosmo_pars_dir+"eft_single_sample_single_redshift.yaml"
+survey_config_file = filepaths.survey_pars_dir+'survey_pars_single_sample_single_redshift.yaml'
 
-save_dir = "/home/joeadamo/Research/Data/SPHEREx-Data/Training-Set-EFT-2s-2z/"
+#Joes directory: save_dir = "/home/joeadamo/Research/Data/SPHEREx-Data/Training-Set-EFT-2s-2z/"
+
+#Same filepath to save as tns training set
+save_dir = filepaths.data_dir
 -range
 #-------------------------------------------------------------------
 # FUNCTIONS
