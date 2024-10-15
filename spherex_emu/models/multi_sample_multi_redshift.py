@@ -111,8 +111,10 @@ class Transformer(nn.Module):
                                         config_dict["use_skip_connection"]))
             self.mlp_blocks.add_module("Activation"+str(i+1), blocks.activation_function(config_dict["mlp_dims"][i+1]))
 
+        # expand mlp section output
         split_dim = config_dict["split_dim"]
-        embedding_dim = self.num_ells*self.num_kbins*split_dim
+        split_size = config_dict["split_size"]
+        embedding_dim = split_size*split_dim
         self.embedding_layer = nn.Linear(config_dict["mlp_dims"][0], embedding_dim)
 
         self.transformer_blocks = nn.Sequential()
