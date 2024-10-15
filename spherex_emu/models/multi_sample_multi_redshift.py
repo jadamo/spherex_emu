@@ -12,9 +12,10 @@ class MLP_multi_sample_multi_redshift(nn.Module):
     def __init__(self, config_dict):
         super().__init__()
 
-        output_dim = config_dict["num_kbins"] * 2
+        output_dim = config_dict["num_kbins"] * config_dict["num_ells"]
         self.num_zbins = config_dict["num_zbins"]
         self.num_spectra = config_dict["num_samples"] +  math.comb(config_dict["num_samples"], 2)
+        self.num_ells = config_dict["num_ells"]
         self.num_kbins = config_dict["num_kbins"]
         self.num_cosmo_params = config_dict["num_cosmo_params"]
         self.num_bias_params  = config_dict["num_bias_params"]
@@ -74,7 +75,7 @@ class MLP_multi_sample_multi_redshift(nn.Module):
             X = F.relu(block(X))
         X = torch.sigmoid(self.h2(X))
 
-        X = X.view(-1, self.num_zbins, self.num_spectra, 2, self.num_kbins)
+        X = X.view(-1, self.num_zbins, self.num_spectra, self.num_ells, self.num_kbins)
         X = un_normalize(X, self.output_normalizations)
 
         return X
@@ -87,10 +88,11 @@ class Transformer(nn.Module):
 
         self.num_zbins = config_dict["num_zbins"]
         self.num_spectra = config_dict["num_samples"] +  math.comb(config_dict["num_samples"], 2)
+        self.num_ells = config_dict["num_ells"]
         self.num_kbins = config_dict["num_kbins"]
 
         self.input_dim = config_dict["num_cosmo_params"] + (self.num_zbins * config_dict["num_samples"] * config_dict["num_bias_params"])
-        self.output_dim = self.num_zbins * self.num_spectra * 2 * self.num_kbins
+        self.output_dim = self.num_zbins * self.num_spectra * self.num_ells * self.num_kbins
 
         # cosmo_file = load_config_file(base_dir + config_dict["cosmo_dir"])
         # __, bounds = get_parameter_ranges(cosmo_file)
@@ -128,5 +130,5 @@ class Transformer(nn.Module):
             X = F.relu(block(X))
         X = F.leaky_relu(self.output_layer(X))
 
-        X = X.view(-1, self.num_zbins, self.num_spectra * 2 * self.num_kbins)
+        X = X.view(-1, self.num_zbins, self.num_spectra * self.num_ells * self.num_kbins)
         return X

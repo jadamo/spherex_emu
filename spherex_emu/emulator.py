@@ -167,7 +167,8 @@ class pk_emulator():
             self.ps_fid = torch.from_numpy(np.load(ps_file)).to(self.device).to(torch.float32)
             self.ps_fid = self.ps_fid.view(self.num_zbins, self.num_spectra * 2 * self.num_kbins)
         else:
-            self.ps_fid = torch.zeros((self.num_zbins, self.num_spectra * 2 * self.num_kbins))
+            print("WARNING: Could not load fiducial power spectrum!")
+            self.ps_fid = torch.zeros((self.num_zbins, self.num_spectra * 2 * self.num_kbins)).to(self.device)
 
     def _init_inverse_covariance(self):
         """Loads the inverse data covariance matrix for use in certain loss functions and normalizations"""
@@ -176,8 +177,9 @@ class pk_emulator():
         if os.path.exists(cov_file):
             self.invcov = torch.load(cov_file).to(self.device).to(torch.float32)
         else:
-            self.invcov = torch.eye(2*self.num_spectra*self.num_kbins).unsqueeze(0)
-            self.invcov = self.invcov.repeat(self.num_zbins, 1, 1)
+            print("WARNING: Could not load inverse covariance matrix")
+            self.invcov = torch.eye(self.num_ells*self.num_spectra*self.num_kbins).unsqueeze(0)
+            self.invcov = self.invcov.repeat(self.num_zbins, 1, 1).to(self.device)
 
     def _init_loss(self):
         """Defines the loss function to use"""

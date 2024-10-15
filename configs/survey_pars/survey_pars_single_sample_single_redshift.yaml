@@ -3,18 +3,22 @@ nz: 1
 
 #Number density[h / Mpc] ^ 3:
 number_density_in_hinvMpc_1:
-  - 0.00495
+  - 0.000501
 
 #HOD- C15: Galaxy bias:
-
 galaxy_bias_1:
-  - 1.0
+  - 1.8
 
 sigz_over_one_plus_z:
-  - 0.1
+  - 0.003
 
 zbin_lo:
   - 0.4
 
 zbin_hi:
   - 0.6
+
+# kmin = 2pi/(V)^(1/3) for V in fiducial
+# # Planck cosmology and fsky = 0.75
+# kmin_survey_in_invMpc:
+#   - 0.00217239

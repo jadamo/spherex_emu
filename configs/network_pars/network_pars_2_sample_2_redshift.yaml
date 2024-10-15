@@ -3,7 +3,7 @@
 # Where to save the network
 save_dir: ./emulators/transformer_2_sample_2_redshift/
 # Where your training set lives
-training_dir: ../../Data/SPHEREx-Data/Training-Set-EFT-2s-2z/
+training_dir: ../../Data/Training-Set-EFT-2s-2z/
 # Location of config file with cosmology + bias parameters
 # This file contains all of the parameter ranges
 cosmo_dir : ./configs/cosmo_pars/eft_2_sample_2_redshift.yaml
@@ -15,6 +15,7 @@ num_cosmo_params : 4
 num_bias_params : 1
 num_samples : 2
 num_zbins   : 2
+num_ells    : 2
 num_kbins   : 25
 
 num_mlp_blocks      : 2
@@ -30,7 +31,7 @@ split_dim              : 16
 num_epochs: 350
 learning_rate: [4.65e-04, 1.0e-4]
 batch_size: 100
-training_set_fraction : 0.1
+training_set_fraction : 1.0
 early_stopping_epochs: 25
 weight_initialization: He
 optimizer_type : Adam
