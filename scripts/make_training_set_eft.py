@@ -18,8 +18,8 @@ import spherex_emu.filepaths as filepaths
 k = np.linspace(0.01, 0.25, 25)
 
 N = 100000
-#N_PROC=int(os.environ["SLURM_CPUS_ON_NODE"])
-N_PROC=6
+N_PROC=int(os.environ["SLURM_CPUS_ON_NODE"])
+#N_PROC=14
 
 # fraction of dataset to be partitioned to the training | validation | test sets
 train_frac = 0.8
@@ -33,8 +33,9 @@ survey_config_file = filepaths.survey_pars_dir+'survey_pars_single_sample_single
 #Joes directory: save_dir = "/home/joeadamo/Research/Data/SPHEREx-Data/Training-Set-EFT-2s-2z/"
 
 #Same filepath to save as tns training set
-save_dir = filepaths.data_dir
--range
+#save_dir = filepaths.data_dir
+save_dir = '/home/u14/gibbins/spherex_emu/spherex_emu/data/'
+
 #-------------------------------------------------------------------
 # FUNCTIONS
 #-------------------------------------------------------------------

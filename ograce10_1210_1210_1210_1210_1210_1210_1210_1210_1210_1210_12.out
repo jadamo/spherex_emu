@@ -1,0 +1,16 @@
+Generating 100000 power spectra with 6 processors...
+Number of samples: 1
+Number of redshift bins: 1
+Number of varied parameters: 5
+Saving to /home/u14/gibbins/spherex_emu/spherex_emu/data/
+Generating fiducial power spectrum...
+1 samples for 1 redshift bins.
+INTEGRAL NORMALISATION
+INTEGRAL NORMALISATION
+INTEGRAL NORMALISATION
+Generating training set...
+/home/u14/gibbins/ps_1loop/src/ps_1loop/ps_1loop.py:163: IntegrationWarning: The occurrence of roundoff error is detected, which prevents 
+  the requested tolerance from being achieved.  The error may be 
+  underestimated.
+  res = quad(lambda logk: get_pk(np.exp(logk), **kwarg) * np.exp(logk), np.log(kmin), np.log(kmax), limit=limit, epsrel=1e-6)
+Oct 13 04:12:19.16768  44351 slurmstepd   0x2b5262dfc700: error: *** JOB 10611383 ON r3u10n2 CANCELLED AT 2024-10-13T04:12:19 DUE TO TIME LIMIT ***
