@@ -104,7 +104,7 @@ def make_latin_hypercube(priors, N):
     return params
 
 def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, test_frac:float, 
-                          param_dim, num_zbins, num_tracers, k_dim, remove_old_files=True):
+                          param_dim, num_zbins, num_tracers, num_ells, k_dim, remove_old_files=True):
     """Takes a set of matrices and reorganizes them into training, validation, and tests sets
     
     Args:
@@ -120,7 +120,7 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
     all_filenames = next(os.walk(training_dir), (None, None, []))[2]  # [] if no file
 
     all_params = np.array([], dtype=np.int64).reshape(0,param_dim)
-    all_pk = np.array([], dtype=np.int64).reshape(0, num_zbins, num_tracers, 2, k_dim)
+    all_pk = np.array([], dtype=np.int64).reshape(0, num_zbins, num_tracers, num_ells, k_dim)
 
     # load in all the data internally (NOTE: memory intensive!)
     if "pk-raw.npz" in all_filenames:
@@ -136,6 +136,7 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
             all_params = np.vstack([all_params, params])
             all_pk = np.vstack([all_pk, pk])
 
+    print(all_params.shape, all_pk.shape)
     N = all_params.shape[0]
     N_train = int(N * train_frac)
     N_valid = int(N * valid_frac)
@@ -171,19 +172,24 @@ def mse_loss(predict, target, invcov=None):
 def hyperbolic_loss(predict, target, invcov=None):
     return torch.mean(torch.sqrt(1 + 2*(predict - target)**2)) - 1
 
+def hyperbolic_chi2_loss(predict, target, invcov):
+    chi2 = delta_chi_squared(predict, target, invcov)
+    return torch.mean(torch.sqrt(1 + 2*chi2)) - 1
+
 def delta_chi_squared(predict, target, invcov):
 
-    delta = torch.transpose(predict - target, 3, 4) # (b,nz,nps,nl,nk) -> (b, nz, nps, nk, nl)
-    (_, nz, nps, nk, nl) = delta.shape
-    delta = delta.reshape((-1, nz, nps*nk*nl)) # (nz, nps, nk, nl) --> (nz, nps*nk*nl) 
+    #delta = torch.transpose(predict - target, 3, 4) # (b,nz,nps,nl,nk) -> (b, nz, nps, nk, nl)
+    #(_, nz, nps, nk, nl) = delta.shape
+    #delta = delta.reshape((-1, nz, nps*nk*nl)) # (nz, nps, nk, nl) --> (nz, nps*nk*nl) 
     
+    delta = predict - target # (b, nz, nps*nk*nl)
     delta_row = delta[:, :, None, :,] # (b, nz, 1, nps*nk*nl) 
     delta_col = delta[:, :, :, None,] # (b, nz, nps*nk*nl, 1) 
 
     # NOTE Matrix multiplication is for the last two indices; element wise for all other indices.
     chi2_component = torch.matmul(delta_row, torch.matmul(invcov, delta_col))[..., 0, 0] # invcov is (nz, nps*nk*nl, nps*nk*nl)
     chi2 = torch.sum(chi2_component)
-    return abs(chi2)
+    return chi2
 
 def calc_avg_loss(net, data_loader, input_normalizations, ps_fid, invcov, loss_function):
     """run thru the given data set and returns the average loss value"""

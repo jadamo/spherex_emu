@@ -14,6 +14,7 @@ num_cosmo_params : 4
 num_bias_params : 1   # The number of nuisance parameters per tracer+redshift bin
 num_samples : 1 
 num_zbins   : 1
+num_ells    : 2
 num_kbins : 25
 
 num_mlp_blocks      : 2

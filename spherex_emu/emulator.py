@@ -11,7 +11,7 @@ from spherex_emu.models.multi_sample_multi_redshift import *
 from spherex_emu.dataset import pk_galaxy_dataset
 from spherex_emu.utils import load_config_file, calc_avg_loss, \
                               normalize_cosmo_params, un_normalize_power_spectrum, \
-                              delta_chi_squared, mse_loss, hyperbolic_loss
+                              delta_chi_squared, mse_loss, hyperbolic_loss, hyperbolic_chi2_loss
 from spherex_emu.filepaths import base_dir, data_dir
 
 class pk_emulator():
@@ -114,7 +114,7 @@ class pk_emulator():
         norm_params = normalize_cosmo_params(params, self.input_normalizations)
         pk = self.model.forward(norm_params)
         pk = un_normalize_power_spectrum(pk, self.ps_fid, self.invcov)
-        pk = pk.view(self.num_zbins, self.num_spectra, 2, self.num_kbins)
+        pk = pk.view(self.num_zbins, self.num_spectra, self.num_ells, self.num_kbins)
 
         pk = pk.to("cpu").detach().numpy()
         return pk
@@ -165,17 +165,18 @@ class pk_emulator():
         ps_file = base_dir+self.training_dir+"ps_fid.npy"
         if os.path.exists(ps_file):
             self.ps_fid = torch.from_numpy(np.load(ps_file)).to(self.device).to(torch.float32)
-            self.ps_fid = self.ps_fid.view(self.num_zbins, self.num_spectra * 2 * self.num_kbins)
+            self.ps_fid = self.ps_fid.view(self.num_zbins, self.num_spectra * self.num_ells * self.num_kbins)
         else:
             print("WARNING: Could not load fiducial power spectrum!")
-            self.ps_fid = torch.zeros((self.num_zbins, self.num_spectra * 2 * self.num_kbins)).to(self.device)
+            self.ps_fid = torch.zeros((self.num_zbins, self.num_spectra * self.num_ells * self.num_kbins)).to(self.device)
 
     def _init_inverse_covariance(self):
         """Loads the inverse data covariance matrix for use in certain loss functions and normalizations"""
         #cov_file = data_dir+"cov_"+str(self.num_samples)+"_sample_"+str(self.num_zbins)+"_redshift/invcov_reshape.npy"
-        cov_file = base_dir+self.training_dir+"invcov.dat"
+        cov_file = base_dir+self.training_dir+"invcov.npy"
         if os.path.exists(cov_file):
-            self.invcov = torch.load(cov_file).to(self.device).to(torch.float32)
+            self.invcov = torch.from_numpy(np.load(cov_file)).to(torch.float32).to(self.device)
+            #self.invcov = torch.load(cov_file).to(self.device).to(torch.float32)
         else:
             print("WARNING: Could not load inverse covariance matrix")
             self.invcov = torch.eye(self.num_ells*self.num_spectra*self.num_kbins).unsqueeze(0)
@@ -189,6 +190,8 @@ class pk_emulator():
             self.loss_function = mse_loss
         elif self.loss_type == "hyperbolic":
             self.loss_function = hyperbolic_loss
+        elif self.loss_type == "hyperbolic_chi2":
+            self.loss_function = hyperbolic_chi2_loss
         else:
             print("ERROR: Invalid loss function type")
             raise KeyError
