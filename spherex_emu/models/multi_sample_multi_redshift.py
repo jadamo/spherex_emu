@@ -86,6 +86,7 @@ class Transformer(nn.Module):
     def __init__(self, config_dict):
         super().__init__()
 
+        # TODO: Allow specification of activation function
         self.num_zbins = config_dict["num_zbins"]
         self.num_spectra = config_dict["num_samples"] +  math.comb(config_dict["num_samples"], 2)
         self.num_ells = config_dict["num_ells"]
@@ -99,6 +100,7 @@ class Transformer(nn.Module):
         # self.register_buffer("bounds", torch.Tensor(bounds.T))
 
         self.input_layer = nn.Linear(self.input_dim, config_dict["mlp_dims"][0])
+        self.input_activation = blocks.activation_function(config_dict["mlp_dims"][0])
 
         self.mlp_blocks = nn.Sequential()
         for i in range(config_dict["num_mlp_blocks"]):
@@ -107,28 +109,31 @@ class Transformer(nn.Module):
                                         config_dict["mlp_dims"][i+1],
                                         config_dict["num_block_layers"],
                                         config_dict["use_skip_connection"]))
+            self.mlp_blocks.add_module("Activation"+str(i+1), blocks.activation_function(config_dict["mlp_dims"][i+1]))
 
         split_dim = config_dict["split_dim"]
-        embedding_dim = 2*self.num_kbins*split_dim
+        embedding_dim = self.num_ells*self.num_kbins*split_dim
         self.embedding_layer = nn.Linear(config_dict["mlp_dims"][0], embedding_dim)
 
         self.transformer_blocks = nn.Sequential()
         for i in range(config_dict["num_transformer_blocks"]):
             self.transformer_blocks.add_module("Transformer"+str(i+1),
                     blocks.block_transformer_encoder(embedding_dim, split_dim, 0.1))
+            self.transformer_blocks.add_module("Activation"+str(i+1), blocks.activation_function(embedding_dim))
 
         self.output_layer = nn.Linear(embedding_dim, self.output_dim)
+        self.output_activation = blocks.activation_function(self.output_dim)
 
     def forward(self, X):
 
-        X = F.relu(self.input_layer(X))
+        X = self.input_activation(self.input_layer(X))
         for block in self.mlp_blocks:
-            X = F.relu(block(X))
+            X = block(X)
 
         X = self.embedding_layer(X)
         for block in self.transformer_blocks:
-            X = F.relu(block(X))
-        X = F.leaky_relu(self.output_layer(X))
+            X = block(X)
+        X = self.output_activation(self.output_layer(X))
 
         X = X.view(-1, self.num_zbins, self.num_spectra * self.num_ells * self.num_kbins)
         return X

@@ -32,7 +32,7 @@ split_dim              : 10
 # Training parameters
 num_epochs: 350
 learning_rate: [4.0e-04, 1.0e-4]
-batch_size: 200
+batch_size: 100
 training_set_fraction : 1.0
 early_stopping_epochs: 25
 weight_initialization: He

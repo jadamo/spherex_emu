@@ -68,11 +68,11 @@ class block_resnet(nn.Module):
 
         self.layers = nn.Sequential()
         self.layers.add_module("layer0",    nn.Linear(input_dim, output_dim))
-        self.layers.add_module("ReLU", nn.ReLU())
+        self.layers.add_module("Activation", activation_function())
         for i in range(num_layers-1):
             self.layers.add_module("layer"+str(i+1), nn.Linear(output_dim, output_dim))
             self.layers.add_module("bn"+str(i+1),    nn.BatchNorm1d(output_dim))
-            self.layers.add_module("ReLU",      nn.ReLU())
+            self.layers.add_module("Activation",     activation_function(output_dim))
     
         if skip_connection:
             self.skip_layer = nn.Linear(input_dim, output_dim)
@@ -191,3 +191,16 @@ class block_transformer_encoder(nn.Module):
         Y = F.relu(self.h1(Y))
         X = X + Y.reshape(-1, self.hidden_dim)
         return X
+
+class activation_function(nn.Module):
+    def __init__(self, d):
+        super().__init__()
+
+        self.dim = d
+        self.gamma = nn.Parameter(torch.zeros(d))
+        self.beta = nn.Parameter(torch.zeros(d))
+
+    def forward(self, X):
+        inv = torch.special.expit(torch.mul(self.beta, X))
+
+        return torch.mul(self.gamma + torch.mul(inv, 1-self.gamma), X)
