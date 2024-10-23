@@ -14,7 +14,7 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self._set_normalization(data_dir, type)
         #self.pk = normalize(self.pk, self.output_normalizations)
         #self.pk = self.pk.view(-1, self.num_zbins * self.num_samples, self.num_ells * self.num_kbins)
-        self.pk = self.pk.view(-1, self.num_zbins, self.num_samples*self.num_ells*self.num_kbins)
+        self.pk = self.pk.reshape(-1, self.num_zbins, self.num_samples*self.num_ells*self.num_kbins)
 
     def _load_data(self, data_dir, type, frac):
 
@@ -39,6 +39,8 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self.num_samples = self.pk.shape[2]
         self.num_ells = self.pk.shape[3]
         self.num_kbins = self.pk.shape[4]
+
+        self.pk = torch.transpose(self.pk, 3, 4)
 
         if frac != 1.:
             N_frac = int(self.params.shape[0] * frac)
@@ -90,4 +92,4 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         
         pk = self.pk[idx].view(self.num_zbins, self.num_samples, self.num_ells, self.num_kbins)
         #pk = un_normalize(pk, self.normalizations).detach().numpy()
-        return pk
+        return torch.permute(pk, (0, 1, 3, 2))

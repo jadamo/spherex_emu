@@ -41,7 +41,7 @@ cosmo_params:
   ns:
     value: 0.96589
   fnl:
-    value: 10
+    value: 0
     prior:
       min: -50
       max: 50
@@ -69,15 +69,15 @@ bias_params:
   bphid:
     value: 2.6976
   c0:
-    value: 5
+    value: 0
   c2:
-    value: 10
+    value: 0
   c4:
-    value: -5
+    value: 0
   cfog:
-    value: 5
+    value: 0
   P_shot:
-    value: 10
+    value: 0
   a0:
     value: 0
   a2:

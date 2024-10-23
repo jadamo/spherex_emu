@@ -15,9 +15,15 @@ import spherex_emu.filepaths as filepaths
 # GLOBAL VARIABLES
 #-------------------------------------------------------------------
 
-k = np.linspace(0.01, 0.25, 25)
+#k = np.linspace(0.01, 0.2, 50)
+k = np.array([0.002093, 0.004879 ,0.007665 ,0.010451, 0.013237 ,0.016023 ,0.018809 ,0.021595,0.024381, 0.027167, 0.029953, 0.032739, 0.035525, 0.038311, 0.041097, 0.043883,
+         0.046669, 0.049455, 0.052241, 0.055027, 0.057813, 0.060599, 0.063385, 0.066171,
+         0.068957, 0.071743, 0.074529, 0.077315, 0.080101, 0.082887, 0.085673, 0.088459,
+         0.091245, 0.094031, 0.096817, 0.099603, 0.102389, 0.105175, 0.107961, 0.110747,
+         0.113533, 0.116319, 0.119105, 0.121891, 0.124677, 0.127463, 0.130249, 0.133035,
+         0.135821, 0.138607]) / 0.7
 
-N = 100000
+N = 250000
 N_PROC=int(os.environ["SLURM_CPUS_ON_NODE"])
 #N_PROC=14
 
@@ -34,7 +40,8 @@ survey_config_file = filepaths.survey_pars_dir+'survey_pars_single_sample_single
 
 #Same filepath to save as tns training set
 #save_dir = filepaths.data_dir
-save_dir = '/home/u14/gibbins/spherex_emu/spherex_emu/data/'
+#save_dir = '/home/u14/gibbins/spherex_emu/spherex_emu/data/'
+save_dir = '/home/u12/jadamo/Data/Training-Set-EFT-1s-1z/'
 
 #-------------------------------------------------------------------
 # FUNCTIONS
@@ -59,7 +66,7 @@ def prepare_header_info(param_names, fiducial_cosmology, n_samples):
 
 def get_power_spectrum(sample, param_names, cosmo_dict, ps_config):
 
-    ells = [0, 2]
+    ells = [0, 1, 2, 3, 4]
     num_samples = ps_config['number_density_table'].shape[0]
     num_zbins = len(ps_config["redshift_list"])
     sample_dict = dict(zip(param_names, sample))
@@ -67,13 +74,13 @@ def get_power_spectrum(sample, param_names, cosmo_dict, ps_config):
     param_vector = prepare_ps_inputs(sample_dict, cosmo_dict, num_samples, num_zbins)
     try:
         theory = ps_theory_calculator.PowerSpectrumMultipole1Loop(ps_config)
-        galaxy_ps = theory(k, ells, param_vector)
+        galaxy_ps = theory(k, ells, param_vector) / cosmo_dict["cosmo_params"]["h"]["value"]**3
 
         if not np.any(np.isnan(galaxy_ps)): return galaxy_ps, 0
-        else: return np.zeros(2, len(k)), -1
+        else: return np.zeros(len(ells), len(k)), -1
     except:
         print("Power spectrum calculation failed!")
-        return np.zeros(2, len(k)), -1
+        return np.zeros(len(ells), len(k)), -1
 
 #-------------------------------------------------------------------
 # MAIN
@@ -110,7 +117,7 @@ def main():
     print("Generating fiducial power spectrum...")
     pk, result = get_power_spectrum({}, param_names, cosmo_dict, ps_config)
     if result == 0:
-        np.save(save_dir+"ps_eft_fid.npy", pk)
+        np.save(save_dir+"ps_fid.npy", pk)
     else:
         print("ERROR! failed to calculate fiducial power spectrum!")
 
@@ -148,7 +155,7 @@ def main():
     print("{:0.0f} ({:0.2f}%) power spectra failed to compute".format(fail_compute, 100.*fail_compute / N))
 
     organize_training_set(save_dir, train_frac, valid_frac, test_frac,
-                          samples.shape[1], len(z_eff), num_spectra, len(k), True)
+                          samples.shape[1], len(z_eff), num_spectra, 5, len(k), True)
 
 if __name__ == "__main__":
     main()

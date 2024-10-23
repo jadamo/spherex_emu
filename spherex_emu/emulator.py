@@ -114,7 +114,8 @@ class pk_emulator():
         norm_params = normalize_cosmo_params(params, self.input_normalizations)
         pk = self.model.forward(norm_params)
         pk = un_normalize_power_spectrum(pk, self.ps_fid, self.invcov)
-        pk = pk.view(self.num_zbins, self.num_spectra, self.num_ells, self.num_kbins)
+        pk = pk.view(self.num_zbins, self.num_spectra, self.num_kbins, self.num_ells)
+        pk = np.transpose(pk, (0, 1, 3, 2))
 
         pk = pk.to("cpu").detach().numpy()
         return pk
@@ -165,7 +166,9 @@ class pk_emulator():
         ps_file = base_dir+self.training_dir+"ps_fid.npy"
         if os.path.exists(ps_file):
             self.ps_fid = torch.from_numpy(np.load(ps_file)).to(self.device).to(torch.float32)
-            self.ps_fid = self.ps_fid.view(self.num_zbins, self.num_spectra * self.num_ells * self.num_kbins)
+            if self.ps_fid.shape[3] == self.num_kbins:
+                self.ps_fid = torch.permute(self.ps_fid, (0, 1, 3, 2))
+            self.ps_fid = self.ps_fid.reshape(self.num_zbins, self.num_spectra * self.num_kbins * self.num_ells)
         else:
             print("WARNING: Could not load fiducial power spectrum!")
             self.ps_fid = torch.zeros((self.num_zbins, self.num_spectra * self.num_ells * self.num_kbins)).to(self.device)
