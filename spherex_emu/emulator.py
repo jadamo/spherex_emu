@@ -115,7 +115,7 @@ class pk_emulator():
         pk = self.model.forward(norm_params)
         pk = un_normalize_power_spectrum(pk, self.ps_fid, self.invcov)
         pk = pk.view(self.num_zbins, self.num_spectra, self.num_kbins, self.num_ells)
-        pk = np.transpose(pk, (0, 1, 3, 2))
+        pk = torch.permute(pk, (0, 1, 3, 2))
 
         pk = pk.to("cpu").detach().numpy()
         return pk
