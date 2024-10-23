@@ -23,7 +23,7 @@ k = np.array([0.002093, 0.004879 ,0.007665 ,0.010451, 0.013237 ,0.016023 ,0.0188
          0.113533, 0.116319, 0.119105, 0.121891, 0.124677, 0.127463, 0.130249, 0.133035,
          0.135821, 0.138607]) / 0.7
 
-N = 10
+N = 100000
 N_PROC=int(os.environ["SLURM_CPUS_ON_NODE"])
 #N_PROC=14
 
@@ -40,10 +40,8 @@ survey_config_file = filepaths.survey_pars_dir+'survey_pars_single_sample_single
 
 #Same filepath to save as tns training set
 #save_dir = filepaths.data_dir
-save_dir = '/home/u14/gibbins/spherex_emu/spherex_emu/data/10_eft/'
+save_dir = '/home/u14/gibbins/spherex_emu/spherex_emu/data/100k_eft/'
 #save_dir = '/home/u12/jadamo/Data/Training-Set-EFT-1s-1z/'
-
-t1 = time.time()
 
 #-------------------------------------------------------------------
 # FUNCTIONS
@@ -112,7 +110,7 @@ def main():
     print("Generating", str(N), "power spectra with", str(N_PROC), "processors...")
     print("Number of samples:", ps_config['number_density_table'].shape[0])
     print("Number of redshift bins:", len(ps_config["redshift_list"]))
-    print("Number of varied parameters:", len(param_names))
+    print("Number of varied parameters:", len(param_names),':', param_names)
     print("Saving to", save_dir)
 
     # first, generate the power spectrum at the fiducial cosmology
@@ -161,7 +159,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-t2= time.time()
-
-print('Run Time:',t2-t1,'Seconds')

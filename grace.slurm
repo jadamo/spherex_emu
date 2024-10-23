@@ -1,13 +1,13 @@
 #!/bin/bash
 
 #SBATCH --job-name=eft_ts
-#SBATCH --output=ograce10_22.out
+#SBATCH --output=ograce100k.out
 #SBATCH --account=timeifler
 #SBATCH --partition=standard
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
-#SBATCH --time=00:15:00
+#SBATCH --cpus-per-task=94
+#SBATCH --time=10:00:00
 
 
 #cd spherex_emu
