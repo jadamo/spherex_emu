@@ -5,8 +5,8 @@ import numpy as np
 import yaml, math, os
 
 from spherex_emu.models import blocks
-from spherex_emu.models import mlp
-from spherex_emu.models import transformer
+from spherex_emu.models.mlp import mlp
+from spherex_emu.models.transformer import transformer
 from spherex_emu.dataset import pk_galaxy_dataset
 from spherex_emu.utils import load_config_file, calc_avg_loss, get_parameter_ranges,\
                               normalize_cosmo_params, un_normalize_power_spectrum, \

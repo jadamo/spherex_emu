@@ -8,7 +8,7 @@ training_dir: ../../Data/Training-Set-EFT-1s-1z/
 # This file contains all of the parameter ranges
 cosmo_dir : ./configs/cosmo_pars/eft_single_sample_single_redshift.yaml
 
-model_type : Transformer
+model_type : transformer
 loss_type : hyperbolic_chi2
 
 num_cosmo_params : 1
@@ -22,7 +22,7 @@ z_eff: [0.5]
 
 num_mlp_blocks      : 2
 mlp_dims            : [250, 250, 250]
-num_block_layers    : 2
+num_block_layers    : 3
 use_batchnorm       : False
 use_skip_connection : True
 
@@ -32,7 +32,7 @@ split_size             : 20
 
 # Training parameters
 num_epochs: 350
-learning_rate: [3.0e-04, 5.0e-5]
+learning_rate: [2.0e-04, 5.0e-5]
 batch_size: 250
 training_set_fraction : 1.0
 early_stopping_epochs: 25

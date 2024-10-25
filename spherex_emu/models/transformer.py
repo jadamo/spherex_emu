@@ -5,7 +5,7 @@ import math
 
 import spherex_emu.models.blocks as blocks
 
-class Transformer(nn.Module):
+class transformer(nn.Module):
 
     def __init__(self, config_dict):
         super().__init__()
@@ -61,7 +61,7 @@ class Transformer(nn.Module):
             X = block(X)
         X = self.output_activation(self.output_layer(X))
 
-        X = X.view[-1, self.num_zbins, self.num_spectra, self.num_ells, self.num_kbins]
+        X = X.view(-1, self.num_zbins, self.num_spectra, self.num_ells, self.num_kbins)
         X = torch.permute(X, (0, 1, 2, 4, 3))
         X = X.reshape(-1, self.num_zbins, self.num_spectra * self.num_kbins * self.num_ells)
 
