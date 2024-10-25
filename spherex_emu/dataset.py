@@ -90,6 +90,6 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
 
     def get_power_spectra(self, idx):
         
-        pk = self.pk[idx].view(self.num_zbins, self.num_samples, self.num_ells, self.num_kbins)
+        pk = self.pk[idx].view(self.num_zbins, self.num_samples, self.num_kbins, self.num_ells)
         #pk = un_normalize(pk, self.normalizations).detach().numpy()
         return torch.permute(pk, (0, 1, 3, 2))

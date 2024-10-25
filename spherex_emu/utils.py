@@ -220,7 +220,17 @@ def normalize_power_spectrum(ps, ps_fid, inv_cov):
     return ps_new
 
 def un_normalize_power_spectrum(ps, ps_fid, inv_cov):
+    """
+    Reverses normalization of a batch of output power spectru based on the method developed by Evan.
+    TODO: Upgrade to handle non-diagonal covariance
 
+    Args:
+        ps: power spectrum to reverse normalization. Expected shape is [nb, nz, ns*nk*nl]
+        ps_fid: fiducial power spectrum used to reverse normalization. Expected shape is [nb, nz, ns*nk*nl]
+        inv_cov: inverse data covariance matrix used to reverse normalization. Expected shape is [nz, ns*nk*nl]
+    Returns:
+        ps_new: galaxy power spectrum in units of (Mpc/h)^3 in the same shape as ps
+    """
     ps_new = torch.zeros_like(ps)
     for z in range(ps_new.shape[1]):
         ps_new[:,z] = (ps[:,z] / torch.sqrt(torch.diag(inv_cov[z]))) + ps_fid[z]
