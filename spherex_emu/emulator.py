@@ -30,6 +30,7 @@ class pk_emulator():
         self._init_loss()
         self._init_fiducial_power_spectrum()
         self._init_inverse_covariance()
+        self._diagonalize_covariance()
         self._init_normalizations() # <- This function might not be necesary anymore
         self.model.apply(self._init_weights)
 
@@ -46,7 +47,11 @@ class pk_emulator():
         
         self.ps_fid = torch.load(path+"ps_fid.dat", map_location=self.device)
         self.invcov = torch.load(path+"invcov.dat", map_location=self.device)
-        self.output_normalizations = torch.load(path+"output_normalization.dat", map_location=self.device)
+        self.eigvals = torch.load(path+"eigenvals.dat", map_location=self.device)
+        self.Q = torch.load(path+"eigenvectors.dat", map_location=self.device)
+        for z in range(self.num_zbins):
+            self.Q_inv[z] = torch.linalg.inv(self.Q[z])
+        #self.output_normalizations = torch.load(path+"output_normalization.dat", map_location=self.device)
 
     def load_data(self, key, data_frac=1.0, return_dataloader=True, data_dir=""):
 
@@ -59,8 +64,8 @@ class pk_emulator():
             data_loader = torch.utils.data.DataLoader(data, batch_size=self.config_dict["batch_size"], shuffle=True)
             
             # set normalization based on min and max values in the training set
-            if key == "training":
-                self.output_normalizations = data.output_normalizations.to(self.device)
+            # if key == "training":
+            #     self.output_normalizations = data.output_normalizations.to(self.device)
                 #self.model.set_normalizations(self.output_normalizations)
 
             if return_dataloader: return data_loader
@@ -171,14 +176,28 @@ class pk_emulator():
     def _init_inverse_covariance(self):
         """Loads the inverse data covariance matrix for use in certain loss functions and normalizations"""
         #cov_file = data_dir+"cov_"+str(self.num_samples)+"_sample_"+str(self.num_zbins)+"_redshift/invcov_reshape.npy"
-        cov_file = base_dir+self.training_dir+"invcov.npy"
-        if os.path.exists(cov_file):
-            self.invcov = torch.from_numpy(np.load(cov_file)).to(torch.float32).to(self.device)
-            #self.invcov = torch.load(cov_file).to(self.device).to(torch.float32)
+        cov_file = base_dir+self.training_dir
+        if os.path.exists(cov_file+"invcov.npy"):
+            self.invcov = torch.from_numpy(np.load(cov_file+"invcov.npy")).to(torch.float32).to(self.device)
+        elif os.path.exists(cov_file+"invcov.dat"):
+            self.invcov = torch.load(cov_file+"invcov.dat").to(self.device).to(torch.float32)
         else:
             print("WARNING: Could not load inverse covariance matrix")
             self.invcov = torch.eye(self.num_ells*self.num_spectra*self.num_kbins).unsqueeze(0)
             self.invcov = self.invcov.repeat(self.num_zbins, 1, 1).to(self.device)
+
+    def _diagonalize_covariance(self):
+        """performs an eigenvalue decomposition of the inverse covariance matrix"""
+        self.Q, = torch.zeros_like(self.invcov)
+        self.Q_inv = torch.zeros_like(self.invcov)
+        self.eigvals = torch.zeros(self.invcov.shape[1])
+        for z in range(self.num_zbins):
+            q, eig = torch.linalg.eigh(self.invcov[z])
+            self.Q[z] = q.real
+            self.Q_inv[z] = torch.linalg.inv(q).real
+            self.eigvals[z] = eig.real
+
+        assert torch.all(self.eigvals > 0), "ERROR! covariance matrix has negative eigenvalues? Is it positive definite?"
 
     def _init_loss(self):
         """Defines the loss function to use"""
@@ -230,9 +249,12 @@ class pk_emulator():
         with open(base_dir+self.save_dir+'config.yaml', 'w') as outfile:
             yaml.dump(dict(self.config_dict), outfile, sort_keys=False, default_flow_style=False)
 
+        # data needed for normalization
         torch.save(self.ps_fid, base_dir+self.save_dir+"ps_fid.dat")
         torch.save(self.invcov, base_dir+self.save_dir+"invcov.dat")
-        torch.save(self.output_normalizations, base_dir+self.save_dir+"output_normalization.dat")
+        torch.save(self.eigvals, base_dir+self.save_dir+"eigenvals.dat")
+        torch.save(self.Q, base_dir+self.save_dir+"eigenvectors.dat")
+        #torch.save(self.output_normalizations, base_dir+self.save_dir+"output_normalization.dat")
         torch.save(self.model.state_dict(), base_dir+self.save_dir+'network.params')
 
     def _check_params(self, params):
