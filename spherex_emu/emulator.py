@@ -93,8 +93,8 @@ class pk_emulator():
             for epoch in range(self.num_epochs):
 
                 self._train_one_epoch(train_loader)
-                self.train_loss.append(calc_avg_loss(self.model, train_loader, self.input_normalizations, self.ps_fid, self.invcov, self.loss_function))
-                self.valid_loss.append(calc_avg_loss(self.model, valid_loader, self.input_normalizations, self.ps_fid, self.invcov, self.loss_function))
+                self.train_loss.append(calc_avg_loss(self.model, train_loader, self.input_normalizations, self.ps_fid, self.invcov, self.eigvals, self.Q, self.Q_inv, self.loss_function))
+                self.valid_loss.append(calc_avg_loss(self.model, valid_loader, self.input_normalizations, self.ps_fid, self.invcov, self.eigvals, self.Q, self.Q_inv, self.loss_function))
 
                 if self.valid_loss[-1] < best_loss:
                     best_loss = self.valid_loss[-1]
@@ -117,7 +117,7 @@ class pk_emulator():
         params = self._check_params(params)
         norm_params = normalize_cosmo_params(params, self.input_normalizations)
         pk = self.model.forward(norm_params)
-        pk = un_normalize_power_spectrum(pk, self.ps_fid, self.invcov)
+        pk = un_normalize_power_spectrum(pk, self.ps_fid, self.eigvals, self.Q, self.Q_inv)
         pk = pk.view(self.num_zbins, self.num_spectra, self.num_kbins, self.num_ells)
         pk = torch.permute(pk, (0, 1, 3, 2))
 
@@ -188,11 +188,11 @@ class pk_emulator():
 
     def _diagonalize_covariance(self):
         """performs an eigenvalue decomposition of the inverse covariance matrix"""
-        self.Q, = torch.zeros_like(self.invcov)
+        self.Q = torch.zeros_like(self.invcov)
         self.Q_inv = torch.zeros_like(self.invcov)
-        self.eigvals = torch.zeros(self.invcov.shape[1])
+        self.eigvals = torch.zeros((self.invcov.shape[0], self.invcov.shape[1]), device=self.device)
         for z in range(self.num_zbins):
-            q, eig = torch.linalg.eigh(self.invcov[z])
+            eig, q = torch.linalg.eigh(self.invcov[z])
             self.Q[z] = q.real
             self.Q_inv[z] = torch.linalg.inv(q).real
             self.eigvals[z] = eig.real
@@ -280,7 +280,7 @@ class pk_emulator():
             target = batch[1]
 
             prediction = self.model.forward(params)
-            prediction = un_normalize_power_spectrum(prediction, self.ps_fid, self.invcov)
+            prediction = un_normalize_power_spectrum(prediction, self.ps_fid, self.eigvals, self.Q, self.Q_inv)
 
             loss = self.loss_function(prediction, target, self.invcov)
             self.optimizer.zero_grad()
