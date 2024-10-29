@@ -24,7 +24,7 @@ class transformer(nn.Module):
         # self.register_buffer("bounds", torch.Tensor(bounds.T))
 
         self.input_layer = nn.Linear(self.input_dim, config_dict["mlp_dims"][0])
-        self.input_activation = blocks.activation_function(config_dict["mlp_dims"][0])
+        #self.input_activation = blocks.activation_function(config_dict["mlp_dims"][0])
 
         self.mlp_blocks = nn.Sequential()
         for i in range(config_dict["num_mlp_blocks"]):
@@ -48,18 +48,18 @@ class transformer(nn.Module):
             self.transformer_blocks.add_module("Activation"+str(i+1), blocks.activation_function(embedding_dim))
 
         self.output_layer = nn.Linear(embedding_dim, self.output_dim)
-        self.output_activation = blocks.activation_function(self.output_dim)
+        #self.output_activation = blocks.activation_function(self.output_dim)
 
     def forward(self, input_params):
 
-        X = self.input_activation(self.input_layer(input_params))
+        X = self.input_layer(input_params)
         for block in self.mlp_blocks:
             X = block(X)
 
         X = self.embedding_layer(X)
         for block in self.transformer_blocks:
             X = block(X)
-        X = self.output_activation(self.output_layer(X))
+        X = self.output_layer(X)
 
         X = X.view(-1, self.num_zbins, self.num_spectra, self.num_ells, self.num_kbins)
         X = torch.permute(X, (0, 1, 2, 4, 3))

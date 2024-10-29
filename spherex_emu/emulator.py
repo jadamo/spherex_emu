@@ -78,37 +78,36 @@ class pk_emulator():
 
         self.train_loss = []
         self.valid_loss = []
+        self.effective_lr = []
         best_loss = torch.inf
 
-        # loop thru training rounds
-        for round in range(len(self.learning_rate)):
-            if print_progress: print("Round {:0.0f}, initial learning rate = {:0.2e}".format(
-                                      round, self.learning_rate[round]))
-            
-            if round != 0: self.load_trained_model()
-            self._set_optimizer(round)
+        if print_progress: print("Initial learning rate = {:0.2e}".format(self.learning_rate))
+        
+        self._set_optimizer()
 
-            # loop thru epochs
-            epochs_since_update = 0
-            for epoch in range(self.num_epochs):
+        # loop thru epochs
+        epochs_since_update = 0
+        for epoch in range(self.num_epochs):
 
-                self._train_one_epoch(train_loader)
-                self.train_loss.append(calc_avg_loss(self.model, train_loader, self.input_normalizations, self.ps_fid, self.invcov, self.eigvals, self.Q, self.Q_inv, self.loss_function))
-                self.valid_loss.append(calc_avg_loss(self.model, valid_loader, self.input_normalizations, self.ps_fid, self.invcov, self.eigvals, self.Q, self.Q_inv, self.loss_function))
+            self._train_one_epoch(train_loader)
+            self.train_loss.append(calc_avg_loss(self.model, train_loader, self.input_normalizations, self.ps_fid, self.invcov, self.eigvals, self.Q, self.Q_inv, self.loss_function))
+            self.valid_loss.append(calc_avg_loss(self.model, valid_loader, self.input_normalizations, self.ps_fid, self.invcov, self.eigvals, self.Q, self.Q_inv, self.loss_function))
+            self.effective_lr.append(self.optimizer.param_groups[0]['lr'])
+            self.scheduler.step(self.valid_loss[-1])
 
-                if self.valid_loss[-1] < best_loss:
-                    best_loss = self.valid_loss[-1]
-                    self._save_model()
-                    epochs_since_update = 0
-                else:
-                    epochs_since_update += 1
+            if self.valid_loss[-1] < best_loss:
+                best_loss = self.valid_loss[-1]
+                self._save_model()
+                epochs_since_update = 0
+            else:
+                epochs_since_update += 1
 
-                if print_progress: print("Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(epoch, self.train_loss[-1], self.valid_loss[-1], epochs_since_update))
-                if epochs_since_update > self.early_stopping_epochs:
-                    print("Model has not impvored for {:0.0f} epochs. Initiating early stopping...".format(epochs_since_update))
-                    break
+            if print_progress: print("Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(epoch, self.train_loss[-1], self.valid_loss[-1], epochs_since_update))
+            if epochs_since_update > self.early_stopping_epochs:
+                print("Model has not impvored for {:0.0f} epochs. Initiating early stopping...".format(epochs_since_update))
+                break
 
-            print("Best validation loss was {:0.4e} after {:0.0f} epochs".format(
+        print("Best validation loss was {:0.4e} after {:0.0f} epochs".format(
                 best_loss, epoch - epochs_since_update))
 
     def get_power_spectra(self, params):
@@ -233,17 +232,22 @@ class pk_emulator():
         elif isinstance(m, blocks.linear_with_channels):
             m.initialize_params(self.weight_initialization)
 
-    def _set_optimizer(self, round):
+    def _set_optimizer(self):
         if self.optimizer_type == "Adam":
             self.optimizer = torch.optim.Adam(self.model.parameters(), 
-                                              lr=self.learning_rate[round])
+                                              lr=self.learning_rate)
         else:
             print("Error! Invalid optimizer type specified!")
 
+        # use an adaptive learning rate
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer,
+                                "min", factor=0.1, patience=15)
+
     def _save_model(self):
         """saves the current model state and normalization information to file"""
-        training_data = torch.vstack([ torch.Tensor(self.train_loss), 
-                                      torch.Tensor(self.valid_loss)])
+        training_data = torch.vstack([torch.Tensor(self.train_loss), 
+                                      torch.Tensor(self.valid_loss),
+                                      torch.Tensor(self.effective_lr)])
         torch.save(training_data, base_dir+self.save_dir+"train_data.dat")
         
         with open(base_dir+self.save_dir+'config.yaml', 'w') as outfile:

@@ -177,20 +177,21 @@ class block_transformer_encoder(nn.Module):
 
         #self.ln1 = nn.LayerNorm(self.hidden_dim)
         self.attention = multi_headed_attention(self.hidden_dim, 1, dropout_prob)
-        self.addnorm1 = block_addnorm(self.hidden_dim, dropout_prob)
+        #self.addnorm1 = block_addnorm(self.hidden_dim, dropout_prob)
 
         #feed-forward network
         #self.ln2 = nn.LayerNorm(self.hidden_dim)
+        #self.h1 = nn.Linear(int(self.hidden_dim / num_channels), int(self.hidden_dim / num_channels))
         self.h1 = linear_with_channels(int(self.hidden_dim/num_channels), int(self.hidden_dim/num_channels), num_channels)
-        self.activation = activation_function(self.hidden_dim)
-        self.addnorm2 = block_addnorm(self.hidden_dim, dropout_prob)
+        self.activation = activation_function(int(self.hidden_dim/num_channels))
+        #self.addnorm2 = block_addnorm(self.hidden_dim, dropout_prob)
 
     def forward(self, X):
-        X = self.addnorm1(X, self.attention(X, X, X))
+        X = X + self.attention(X, X, X)
 
         Y = X.reshape(-1, self.num_channels, int(self.hidden_dim / self.num_channels))
         Y = self.activation(self.h1(Y))
-        X = self.addnorm2(X, Y.reshape(-1, self.hidden_dim))
+        X = X + Y.reshape(-1, self.hidden_dim)
         return X
 
 class activation_function(nn.Module):
