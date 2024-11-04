@@ -3,7 +3,7 @@
 # Where to save the network
 save_dir: ./emulators/transformer_1_sample_1_redshift/
 # Where your training set lives
-training_dir: ../../Data/Training-Set-EFT-1s-1z/
+training_dir: spherex_emu/data/Training-Set-EFT-1s-1z/
 # Location of config file with cosmology + bias parameters
 # This file contains all of the parameter ranges
 cosmo_dir : ./configs/cosmo_pars/eft_single_sample_single_redshift.yaml

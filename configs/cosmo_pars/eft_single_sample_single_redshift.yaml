@@ -4,8 +4,8 @@
 # Fiducial model for the EFT power spectrum
 # Based on planck 2018 cosmology
 
-varied_cosmo_params: 4
-varied_bias_params: 1
+varied_cosmo_params: 2
+varied_bias_params: 2
 
 cosmo_param_names:
   - h
@@ -32,6 +32,9 @@ bias_param_names:
 cosmo_params:
   h: 
     value: 0.6736
+    prior:
+      min: .6
+      max: .8
   omega_b: 
     value: 0.02237
   omega_c:

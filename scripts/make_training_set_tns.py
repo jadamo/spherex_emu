@@ -18,8 +18,7 @@ import spherex_emu.filepaths as filepaths
 #-------------------------------------------------------------------
 
 N = 10
-#N_PROC=int(os.environ["SLURM_CPUS_ON_NODE"])
-N_PROC=6
+N_PROC=int(os.environ["SLURM_CPUS_ON_NODE"])
 
 # TODO: Place this info in a better location like a survey pars file
 kmin = 0.01
