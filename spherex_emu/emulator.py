@@ -31,7 +31,7 @@ class pk_emulator():
         self._init_fiducial_power_spectrum()
         self._init_inverse_covariance()
         self._diagonalize_covariance()
-        self._init_normalizations() # <- This function might not be necesary anymore
+        self._init_input_normalizations()
         self.model.apply(self._init_weights)
 
     def load_trained_model(self, path=""):
@@ -45,6 +45,8 @@ class pk_emulator():
         self.model.eval()
         self.model.load_state_dict(torch.load(path+'network.params', map_location=self.device))
         
+        self.input_normalizations = torch.load(path+"param_bounds.dat", map_location=self.device)
+
         self.ps_fid = torch.load(path+"ps_fid.dat", map_location=self.device)
         self.invcov = torch.load(path+"invcov.dat", map_location=self.device)
         self.eigvals = torch.load(path+"eigenvals.dat", map_location=self.device)
@@ -54,7 +56,7 @@ class pk_emulator():
         #self.output_normalizations = torch.load(path+"output_normalization.dat", map_location=self.device)
 
     def load_data(self, key, data_frac=1.0, return_dataloader=True, data_dir=""):
-
+        """loads and returns the training / validation / test dataset into memory"""
         if data_dir != "": dir = data_dir
         else :             dir = base_dir+self.training_dir
 
@@ -145,8 +147,8 @@ class pk_emulator():
             print("ERROR: Invalid value for model type")
             raise KeyError
                 
-    def _init_normalizations(self):
-        """Initializes both input and output normalization factors"""
+    def _init_input_normalizations(self):
+        """Initializes input and normalization factors"""
         try:
             cosmo_dict = load_config_file(base_dir+self.cosmo_dir)
             __, bounds = get_parameter_ranges(cosmo_dict)
@@ -155,9 +157,9 @@ class pk_emulator():
             self.input_normalizations = torch.vstack((torch.zeros((self.num_cosmo_params + (self.num_samples*self.num_zbins*self.num_bias_params))),
                                                       torch.ones((self.num_cosmo_params + (self.num_samples*self.num_zbins*self.num_bias_params))))).to(self.device)
 
-        # NOTE: Actively changing how I'm normalizing the output!
-        self.output_normalizations = torch.cat((torch.zeros((self.num_zbins, self.num_spectra, 2, 1)),
-                                                torch.ones((self.num_zbins, self.num_spectra, 2, 1)))).to(self.device)
+        # NOTE: Old way of doing output normalizations
+        # self.output_normalizations = torch.cat((torch.zeros((self.num_zbins, self.num_spectra, 2, 1)),
+        #                                         torch.ones((self.num_zbins, self.num_spectra, 2, 1)))).to(self.device)
         #self.model.set_normalizations(self.output_normalizations)
 
     def _init_fiducial_power_spectrum(self):
@@ -245,15 +247,19 @@ class pk_emulator():
 
     def _save_model(self):
         """saves the current model state and normalization information to file"""
+        # training data
         training_data = torch.vstack([torch.Tensor(self.train_loss), 
                                       torch.Tensor(self.valid_loss),
                                       torch.Tensor(self.effective_lr)])
         torch.save(training_data, base_dir+self.save_dir+"train_data.dat")
         
+        # configuration data
         with open(base_dir+self.save_dir+'config.yaml', 'w') as outfile:
             yaml.dump(dict(self.config_dict), outfile, sort_keys=False, default_flow_style=False)
 
         # data needed for normalization
+        torch.save(self.input_normalizations, base_dir+self.save_dir+"param_bounds.dat")
+
         torch.save(self.ps_fid, base_dir+self.save_dir+"ps_fid.dat")
         torch.save(self.invcov, base_dir+self.save_dir+"invcov.dat")
         torch.save(self.eigvals, base_dir+self.save_dir+"eigenvals.dat")
@@ -271,6 +277,10 @@ class pk_emulator():
         # [cosmo_params, bias_params for each sample / zbin grouped together]
         assert params.shape[0] == self.num_cosmo_params + (self.num_bias_params * self.num_zbins * self.num_samples)
         
+        if torch.any(params < self.input_normalizations[0]) or \
+           torch.any(params > self.input_normalizations[1]):
+            print("WARNING: input parameters out of bounds! Emulator output will be untrustworthy:", params)
+
         return params.unsqueeze(0)
 
     def _train_one_epoch(self, train_loader):

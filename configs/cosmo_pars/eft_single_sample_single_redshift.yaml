@@ -32,9 +32,6 @@ bias_param_names:
 cosmo_params:
   h: 
     value: 0.6736
-    prior:
-      min: .6
-      max: .8
   omega_b: 
     value: 0.02237
   omega_c:

@@ -201,7 +201,7 @@ def calc_avg_loss(net, data_loader, input_normalizations,
     for (i, batch) in enumerate(data_loader):
         #params = data_loader.dataset.get_repeat_params(batch[2], data_loader.dataset.num_zbins, data_loader.dataset.num_samples)
         params = normalize_cosmo_params(batch[0], input_normalizations)
-	prediction = net(params)
+        prediction = net(params)
         prediction = un_normalize_power_spectrum(prediction, ps_fid, eigvals, Q, Q_inv)
         avg_loss += loss_function(prediction, batch[1], invcov).item()
 
@@ -211,7 +211,6 @@ def calc_avg_loss(net, data_loader, input_normalizations,
 def normalize_cosmo_params(params, normalizations):
     min_v = normalizations[0]
     max_v = normalizations[1]
-    print('parmams', params, 'min', min_v, 'max', max_v)
     return (params - min_v) / (max_v - min_v)
 
 def normalize_power_spectrum_diagonal(ps, ps_fid, inv_cov):
