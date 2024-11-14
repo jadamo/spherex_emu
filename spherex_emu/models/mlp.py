@@ -71,8 +71,7 @@ class mlp(nn.Module):
         #X = X.flatten(1, 2)#.permute(1, 0, 2)
 
         X = F.relu(self.h1(X))
-        for block in self.mlp_blocks:
-            X = F.relu(block(X))
+        X = F.relu(self.mlp_blocks(X))
         X = torch.sigmoid(self.h2(X))
 
         X = X.view(-1, self.num_zbins, self.num_spectra, self.num_ells, self.num_kbins)

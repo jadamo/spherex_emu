@@ -115,14 +115,17 @@ class pk_emulator():
     def get_power_spectra(self, params):
         """Gets the power spectra corresponding to the given params by passing them thru the network"""
 
-        params = self._check_params(params)
-        norm_params = normalize_cosmo_params(params, self.input_normalizations)
-        pk = self.model.forward(norm_params)
-        pk = un_normalize_power_spectrum(pk, self.ps_fid, self.eigvals, self.Q, self.Q_inv)
-        pk = pk.view(self.num_zbins, self.num_spectra, self.num_kbins, self.num_ells)
-        pk = torch.permute(pk, (0, 1, 3, 2))
+        self.model.eval()
+        with torch.no_grad():
+            params = self._check_params(params)
+            norm_params = normalize_cosmo_params(params, self.input_normalizations)
+            pk = self.model.forward(norm_params)
+            pk = un_normalize_power_spectrum(pk, self.ps_fid, self.eigvals, self.Q, self.Q_inv)
+            pk = pk.view(self.num_zbins, self.num_spectra, self.num_kbins, self.num_ells)
+            pk = torch.permute(pk, (0, 1, 3, 2))
 
-        pk = pk.to("cpu").detach().numpy()
+            pk = pk.to("cpu").detach().numpy()
+
         return pk
 
     # -----------------------------------------------------------
@@ -171,19 +174,16 @@ class pk_emulator():
                 self.ps_fid = torch.permute(self.ps_fid, (0, 1, 3, 2))
             self.ps_fid = self.ps_fid.reshape(self.num_zbins, self.num_spectra * self.num_kbins * self.num_ells)
         else:
-            print("WARNING: Could not load fiducial power spectrum!")
             self.ps_fid = torch.zeros((self.num_zbins, self.num_spectra * self.num_ells * self.num_kbins)).to(self.device)
 
     def _init_inverse_covariance(self):
         """Loads the inverse data covariance matrix for use in certain loss functions and normalizations"""
-        #cov_file = data_dir+"cov_"+str(self.num_samples)+"_sample_"+str(self.num_zbins)+"_redshift/invcov_reshape.npy"
         cov_file = base_dir+self.training_dir
         if os.path.exists(cov_file+"invcov.npy"):
             self.invcov = torch.from_numpy(np.load(cov_file+"invcov.npy")).to(torch.float32).to(self.device)
         elif os.path.exists(cov_file+"invcov.dat"):
             self.invcov = torch.load(cov_file+"invcov.dat").to(self.device).to(torch.float32)
         else:
-            print("WARNING: Could not load inverse covariance matrix")
             self.invcov = torch.eye(self.num_ells*self.num_spectra*self.num_kbins).unsqueeze(0)
             self.invcov = self.invcov.repeat(self.num_zbins, 1, 1).to(self.device)
 

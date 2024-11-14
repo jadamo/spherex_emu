@@ -53,12 +53,9 @@ class transformer(nn.Module):
     def forward(self, input_params):
 
         X = self.input_layer(input_params)
-        for block in self.mlp_blocks:
-            X = block(X)
-
+        X = self.mlp_blocks(X)
         X = self.embedding_layer(X)
-        for block in self.transformer_blocks:
-            X = block(X)
+        X = self.transformer_blocks(X)
         X = self.output_layer(X)
 
         X = X.view(-1, self.num_zbins, self.num_spectra, self.num_ells, self.num_kbins)

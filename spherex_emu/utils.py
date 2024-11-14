@@ -251,7 +251,7 @@ def un_normalize_power_spectrum(ps, ps_fid, eigvals, Q, Q_inv):
 
     Args:
         ps: power spectrum to reverse normalization. Expected shape is [nb, nz, ns*nk*nl]
-        ps_fid: fiducial power spectrum used to reverse normalization. Expected shape is [nb, nz, ns*nk*nl]
+        ps_fid: fiducial power spectrum used to reverse normalization. Expected shape is [nz, ns*nk*nl]
         eigvals: eigenvalues of the inverse covariance matrix
         Q: eigenvectors of the inverse covariance matrix
         Q_inv: inverse eigenvectors of the inverse covariance matrix
@@ -260,8 +260,11 @@ def un_normalize_power_spectrum(ps, ps_fid, eigvals, Q, Q_inv):
     """
     ps_new = torch.zeros_like(ps)
     for z in range(ps_new.shape[1]):
-        ps_new[:,z] = (ps[:,z] / torch.sqrt(eigvals) + (ps_fid[z].flatten() @ Q)) @ Q_inv
-                       
+        ps_new[:,z] = (ps[:,z] / torch.sqrt(eigvals[z]) + (ps_fid[z].flatten() @ Q[z])) @ Q_inv[z]
+    
+    #ps_new = (ps / torch.sqrt(eigvals) + (ps_fid @ Q))# @ Q_inv
+    #print(ps_fid.shape, Q.shape, (ps_fid @ Q).shape)
+    #print(ps_new.shape, eigvals.shape, ps_fid.shape, Q.shape)
     return ps_new
 
 # TODO: Remove or rename function
