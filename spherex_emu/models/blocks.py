@@ -125,7 +125,6 @@ class multi_headed_attention(nn.Module):
         # Shape of input X: (batch_size, no. of queries or key-value pairs, num_hiddens). 
         # Shape of output X: (batch_size, no. of queries or key-value pairs, num_heads, num_hiddens / num_heads)
         X = X.reshape(X.shape[0], X.shape[1], self.num_heads, -1)
-
         X = X.permute(0, 2, 1, 3)
 
         return X.reshape(-1, X.shape[2], X.shape[3])
@@ -176,7 +175,8 @@ class block_transformer_encoder(nn.Module):
         self.num_channels = num_channels
 
         #self.ln1 = nn.LayerNorm(self.hidden_dim)
-        self.attention = multi_headed_attention(self.hidden_dim, 1, dropout_prob)
+        #self.attention = multi_headed_attention(self.hidden_dim, 1, dropout_prob)
+        self.attention = nn.MultiheadAttention(int(self.hidden_dim), 1, dropout_prob, batch_first=True)
         #self.addnorm1 = block_addnorm(self.hidden_dim, dropout_prob)
 
         #feed-forward network
@@ -187,7 +187,9 @@ class block_transformer_encoder(nn.Module):
         #self.addnorm2 = block_addnorm(self.hidden_dim, dropout_prob)
 
     def forward(self, X):
-        X = X + self.attention(X, X, X)
+        X = torch.unsqueeze(X, 1)
+        X = X + self.attention(X, X, X)[0]
+        X = X.reshape(-1, X.shape[2])
 
         Y = X.reshape(-1, self.num_channels, int(self.hidden_dim / self.num_channels))
         Y = self.activation(self.h1(Y))

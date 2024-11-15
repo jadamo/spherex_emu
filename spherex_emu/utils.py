@@ -209,9 +209,7 @@ def calc_avg_loss(net, data_loader, input_normalizations,
     return avg_loss
 
 def normalize_cosmo_params(params, normalizations):
-    min_v = normalizations[0]
-    max_v = normalizations[1]
-    return (params - min_v) / (max_v - min_v)
+    return (params - normalizations[0]) / (normalizations[1] - normalizations[0])
 
 def normalize_power_spectrum_diagonal(ps, ps_fid, inv_cov):
     ps_new = torch.zeros_like(ps)
@@ -220,10 +218,10 @@ def normalize_power_spectrum_diagonal(ps, ps_fid, inv_cov):
                        
     return ps_new
 
-def normalize_power_spectruml(ps, ps_fid, eigvals, Q):
+def normalize_power_spectruml(ps, ps_fid, sqrt_eigvals, Q):
     ps_new = torch.zeros_like(ps)
     for z in range(ps_new.shape[1]):
-        ps_new[:,z] = ((ps[:, z].flatten() @ Q) - (ps_fid[z].flatten() @ Q)) * torch.sqrt(eigvals)         
+        ps_new[:,z] = ((ps[:, z].flatten() @ Q) - (ps_fid[z].flatten() @ Q)) * sqrt_eigvals
     return ps_new
 
 def un_normalize_power_spectrum_diagonal(ps, ps_fid, inv_cov):
@@ -245,14 +243,14 @@ def un_normalize_power_spectrum_diagonal(ps, ps_fid, inv_cov):
                        
     return ps_new
 
-def un_normalize_power_spectrum(ps, ps_fid, eigvals, Q, Q_inv):
+def un_normalize_power_spectrum(ps, ps_fid, sqrt_eigvals, Q, Q_inv):
     """
     Reverses normalization of a batch of output power spectru based on the method developed by Evan.
 
     Args:
         ps: power spectrum to reverse normalization. Expected shape is [nb, nz, ns*nk*nl]
         ps_fid: fiducial power spectrum used to reverse normalization. Expected shape is [nz, ns*nk*nl]
-        eigvals: eigenvalues of the inverse covariance matrix
+        sqrt_eigvals: square root eigenvalues of the inverse covariance matrix
         Q: eigenvectors of the inverse covariance matrix
         Q_inv: inverse eigenvectors of the inverse covariance matrix
     Returns:
@@ -260,7 +258,7 @@ def un_normalize_power_spectrum(ps, ps_fid, eigvals, Q, Q_inv):
     """
     ps_new = torch.zeros_like(ps)
     for z in range(ps_new.shape[1]):
-        ps_new[:,z] = (ps[:,z] / torch.sqrt(eigvals[z]) + (ps_fid[z].flatten() @ Q[z])) @ Q_inv[z]
+        ps_new[:,z] = (ps[:,z] / sqrt_eigvals[z] + (ps_fid[z].flatten() @ Q[z])) @ Q_inv[z]
     
     #ps_new = (ps / torch.sqrt(eigvals) + (ps_fid @ Q))# @ Q_inv
     #print(ps_fid.shape, Q.shape, (ps_fid @ Q).shape)

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import numpy as np
-import yaml, math, os
+import yaml, math, os, time
 
 from spherex_emu.models import blocks
 from spherex_emu.models.mlp import mlp
@@ -49,7 +49,7 @@ class pk_emulator():
 
         self.ps_fid = torch.load(path+"ps_fid.dat", map_location=self.device)
         self.invcov = torch.load(path+"invcov.dat", map_location=self.device)
-        self.eigvals = torch.load(path+"eigenvals.dat", map_location=self.device)
+        self.sqrt_eigvals = torch.load(path+"eigenvals.dat", map_location=self.device)
         self.Q = torch.load(path+"eigenvectors.dat", map_location=self.device)
         for z in range(self.num_zbins):
             self.Q_inv[z] = torch.linalg.inv(self.Q[z])
@@ -86,14 +86,14 @@ class pk_emulator():
         if print_progress: print("Initial learning rate = {:0.2e}".format(self.learning_rate))
         
         self._set_optimizer()
-
+        self.model.train()
         # loop thru epochs
         epochs_since_update = 0
         for epoch in range(self.num_epochs):
 
             self._train_one_epoch(train_loader)
-            self.train_loss.append(calc_avg_loss(self.model, train_loader, self.input_normalizations, self.ps_fid, self.invcov, self.eigvals, self.Q, self.Q_inv, self.loss_function))
-            self.valid_loss.append(calc_avg_loss(self.model, valid_loader, self.input_normalizations, self.ps_fid, self.invcov, self.eigvals, self.Q, self.Q_inv, self.loss_function))
+            self.train_loss.append(calc_avg_loss(self.model, train_loader, self.input_normalizations, self.ps_fid, self.invcov, self.sqrt_eigvals, self.Q, self.Q_inv, self.loss_function))
+            self.valid_loss.append(calc_avg_loss(self.model, valid_loader, self.input_normalizations, self.ps_fid, self.invcov, self.sqrt_eigvals, self.Q, self.Q_inv, self.loss_function))
             self.effective_lr.append(self.optimizer.param_groups[0]['lr'])
             self.scheduler.step(self.valid_loss[-1])
 
@@ -119,11 +119,12 @@ class pk_emulator():
         with torch.no_grad():
             params = self._check_params(params)
             norm_params = normalize_cosmo_params(params, self.input_normalizations)
+            #t1 = time.time()
             pk = self.model.forward(norm_params)
-            pk = un_normalize_power_spectrum(pk, self.ps_fid, self.eigvals, self.Q, self.Q_inv)
+            #print(time.time() - t1)
+            pk = un_normalize_power_spectrum(pk, self.ps_fid, self.sqrt_eigvals, self.Q, self.Q_inv)
             pk = pk.view(self.num_zbins, self.num_spectra, self.num_kbins, self.num_ells)
             pk = torch.permute(pk, (0, 1, 3, 2))
-
             pk = pk.to("cpu").detach().numpy()
 
         return pk
@@ -191,14 +192,16 @@ class pk_emulator():
         """performs an eigenvalue decomposition of the inverse covariance matrix"""
         self.Q = torch.zeros_like(self.invcov)
         self.Q_inv = torch.zeros_like(self.invcov)
-        self.eigvals = torch.zeros((self.invcov.shape[0], self.invcov.shape[1]), device=self.device)
+        self.sqrt_eigvals = torch.zeros((self.invcov.shape[0], self.invcov.shape[1]), device=self.device)
         for z in range(self.num_zbins):
             eig, q = torch.linalg.eigh(self.invcov[z])
             self.Q[z] = q.real
             self.Q_inv[z] = torch.linalg.inv(q).real
-            self.eigvals[z] = eig.real
+            self.sqrt_eigvals[z] = eig.real
 
-        assert torch.all(self.eigvals > 0), "ERROR! covariance matrix has negative eigenvalues? Is it positive definite?"
+        # store the square root of the eigenvalues to reduce number of floating point operations
+        assert torch.all(self.sqrt_eigvals > 0), "ERROR! covariance matrix has negative eigenvalues? Is it positive definite?"
+        self.sqrt_eigvals = torch.sqrt(self.sqrt_eigvals)
 
     def _init_loss(self):
         """Defines the loss function to use"""
@@ -262,7 +265,7 @@ class pk_emulator():
 
         torch.save(self.ps_fid, base_dir+self.save_dir+"ps_fid.dat")
         torch.save(self.invcov, base_dir+self.save_dir+"invcov.dat")
-        torch.save(self.eigvals, base_dir+self.save_dir+"eigenvals.dat")
+        torch.save(self.sqrt_eigvals, base_dir+self.save_dir+"eigenvals.dat")
         torch.save(self.Q, base_dir+self.save_dir+"eigenvectors.dat")
         #torch.save(self.output_normalizations, base_dir+self.save_dir+"output_normalization.dat")
         torch.save(self.model.state_dict(), base_dir+self.save_dir+'network.params')
@@ -285,8 +288,6 @@ class pk_emulator():
 
     def _train_one_epoch(self, train_loader):
         """basic training loop"""
-        self.model.train()
-
         total_loss = 0.
         for (i, batch) in enumerate(train_loader):
             #params = train_loader.dataset.get_repeat_params(batch[2], self.num_zbins, self.num_samples)
@@ -294,10 +295,10 @@ class pk_emulator():
             target = batch[1]
 
             prediction = self.model.forward(params)
-            prediction = un_normalize_power_spectrum(prediction, self.ps_fid, self.eigvals, self.Q, self.Q_inv)
+            prediction = un_normalize_power_spectrum(prediction, self.ps_fid, self.sqrt_eigvals, self.Q, self.Q_inv)
 
             loss = self.loss_function(prediction, target, self.invcov)
-            self.optimizer.zero_grad()
+            self.optimizer.zero_grad(set_to_none=True)
             loss.backward()
 
             self.optimizer.step()

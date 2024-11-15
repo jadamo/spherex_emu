@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-import math
+import math, time
 
 import spherex_emu.models.blocks as blocks
 
@@ -46,6 +46,7 @@ class transformer(nn.Module):
             self.transformer_blocks.add_module("Transformer"+str(i+1),
                     blocks.block_transformer_encoder(embedding_dim, split_dim, 0.1))
             self.transformer_blocks.add_module("Activation"+str(i+1), blocks.activation_function(embedding_dim))
+        self.transformer_blocks = self.transformer_blocks
 
         self.output_layer = nn.Linear(embedding_dim, self.output_dim)
         #self.output_activation = blocks.activation_function(self.output_dim)
