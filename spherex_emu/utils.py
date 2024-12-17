@@ -55,7 +55,6 @@ def prepare_ps_inputs(sample, cosmo_dict, num_spectra, num_zbins):
             param_vector.append(cosmo_dict["cosmo_params"][pname]["value"])
 
     # fill in bias params
-    # The below is an (unrealistic) case in which all tracers have the same nuisance parameter values.
     for isample in range(num_spectra):
         for iz in range(num_zbins):
             sub_vector = []
