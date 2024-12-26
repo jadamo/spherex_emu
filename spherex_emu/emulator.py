@@ -179,11 +179,15 @@ class pk_emulator():
 
     def _init_inverse_covariance(self):
         """Loads the inverse data covariance matrix for use in certain loss functions and normalizations"""
+        # TODO: Upgrade to handle different number of k-bins for each zbin
         cov_file = base_dir+self.training_dir
-        if os.path.exists(cov_file+"invcov.npy"):
+        if os.path.exists(cov_file+"invcov.npz"):
             self.invcov = torch.from_numpy(np.load(cov_file+"invcov.npy")).to(torch.float32).to(self.device)
+            #for key, value in self.invcov.items():
+            #    self.invcov[key] = value.to(self.device)
         elif os.path.exists(cov_file+"invcov.dat"):
-            self.invcov = torch.load(cov_file+"invcov.dat").to(self.device).to(torch.float32)
+            self.invcov = torch.load(cov_file+"invcov.dat")
+            self.invcov = self.invcov["zbin_0"].unsqueeze(0).to(torch.float32).to(self.device)
         else:
             self.invcov = torch.eye(self.num_ells*self.num_spectra*self.num_kbins).unsqueeze(0)
             self.invcov = self.invcov.repeat(self.num_zbins, 1, 1).to(self.device)
@@ -200,6 +204,8 @@ class pk_emulator():
             self.sqrt_eigvals[z] = eig.real
 
         # store the square root of the eigenvalues to reduce number of floating point operations
+        assert torch.all(torch.isnan(self.Q)) == False
+        assert torch.all(torch.isnan(self.Q_inv)) == False
         assert torch.all(self.sqrt_eigvals > 0), "ERROR! covariance matrix has negative eigenvalues? Is it positive definite?"
         self.sqrt_eigvals = torch.sqrt(self.sqrt_eigvals)
 
@@ -298,6 +304,8 @@ class pk_emulator():
             prediction = un_normalize_power_spectrum(prediction, self.ps_fid, self.sqrt_eigvals, self.Q, self.Q_inv)
 
             loss = self.loss_function(prediction, target, self.invcov)
+            assert torch.isnan(loss) == False
+            assert torch.isinf(loss) == False
             self.optimizer.zero_grad(set_to_none=True)
             loss.backward()
 

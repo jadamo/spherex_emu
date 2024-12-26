@@ -182,7 +182,6 @@ def delta_chi_squared(predict, target, invcov):
         delta = torch.transpose(predict - target, 3, 4) # (b,nz,nps,nl,nk) -> (b, nz, nps, nk, nl)
         (_, nz, nps, nk, nl) = delta.shape
         delta = delta.reshape((-1, nz, nps*nk*nl)) # (nz, nps, nk, nl) --> (nz, nps*nk*nl) 
-
     delta_row = delta[:, :, None, :,] # (b, nz, 1, nps*nk*nl) 
     delta_col = delta[:, :, :, None,] # (b, nz, nps*nk*nl, 1) 
 

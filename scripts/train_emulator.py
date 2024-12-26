@@ -5,7 +5,7 @@ import torch
 
 def main():
 
-    config_file = network_pars_dir + "network_pars_single_sample_single_redshift.yaml"
+    config_file = network_pars_dir + "network_pars_3_sample_1_redshift.yaml"
     t1 = time.time()
     emulator = pk_emulator(config_file)
     print("Training network on device:", emulator.device)

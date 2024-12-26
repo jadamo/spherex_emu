@@ -58,7 +58,7 @@ class transformer(nn.Module):
         X = self.embedding_layer(X)
         X = self.transformer_blocks(X)
         X = self.output_layer(X)
-
+        
         X = X.view(-1, self.num_zbins, self.num_spectra, self.num_ells, self.num_kbins)
         X = torch.permute(X, (0, 1, 2, 4, 3))
         X = X.reshape(-1, self.num_zbins, self.num_spectra * self.num_kbins * self.num_ells)
