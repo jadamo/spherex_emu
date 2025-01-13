@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import numpy as np
-import yaml, math, os, time
+import yaml, math, os
 
 from spherex_emu.models import blocks
 from spherex_emu.models.mlp import mlp
@@ -11,13 +11,21 @@ from spherex_emu.dataset import pk_galaxy_dataset
 from spherex_emu.utils import load_config_file, calc_avg_loss, get_parameter_ranges,\
                               normalize_cosmo_params, un_normalize_power_spectrum, \
                               delta_chi_squared, mse_loss, hyperbolic_loss, hyperbolic_chi2_loss
-from spherex_emu.filepaths import base_dir, data_dir
+# TODO: remove this feature since it breaks when installed without -e
+from spherex_emu.filepaths import base_dir
 
 class pk_emulator():
     """Class defining the neural network emulator."""
 
     def __init__(self, config_file="", config_dict:dict=None):
+        """Emulator constructor, initializes the network structure and all supporting data
 
+        Args:
+            config_file: string specifying location of the configuration file to load
+            config_dict: dictionary of config options to use If not None, will be used instead of 
+                the dictionary specified by config_file. Default None
+        """
+        
         if config_dict is not None: self.config_dict = config_dict
         else:                       self.config_dict = load_config_file(config_file)
 
@@ -55,8 +63,21 @@ class pk_emulator():
             self.Q_inv[z] = torch.linalg.inv(self.Q[z])
         #self.output_normalizations = torch.load(path+"output_normalization.dat", map_location=self.device)
 
-    def load_data(self, key, data_frac=1.0, return_dataloader=True, data_dir=""):
-        """loads and returns the training / validation / test dataset into memory"""
+    def load_data(self, key: str, data_frac = 1.0, return_dataloader=True, data_dir=""):
+        """loads and returns the training / validation / test dataset into memory
+        
+        Args:
+            key: one of ["training", "validation", "testing"] that specifies what type of data-set to laod
+            data_frac: fraction of the total data-set to load in. Default 1
+            return_dataloader: Determines what object type to return the data as. Default True
+                If true: returns data as a pytorch.utils.data.DataLoader object
+                If false: returns data as a pk_galaxy_dataset object
+            data_dir: location of the data-set on disk. Default ""
+
+        Returns:
+            data: The desired data-set in either a pk_galaxy_dataset or DataLoader object.
+        """
+
         if data_dir != "": dir = data_dir
         else :             dir = base_dir+self.training_dir
 
@@ -113,7 +134,7 @@ class pk_emulator():
                 best_loss, epoch - epochs_since_update))
 
     def get_power_spectra(self, params):
-        """Gets the power spectra corresponding to the given params by passing them thru the network"""
+        """Gets the power spectra corresponding to the given input params by passing them though the network"""
 
         self.model.eval()
         with torch.no_grad():

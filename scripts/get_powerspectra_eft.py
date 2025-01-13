@@ -24,7 +24,7 @@ def main():
 
     param_vector = prepare_ps_inputs(alternate_params, cosmo_dict, ndens_table.shape[0], len(z_eff))
     #k = np.linspace(0.01, 0.25, 25)
-    k_data = np.load('/home/joeadamo/Research/SPHEREx/covapt_mt/data/input_data/k_emu_test.npz')
+    k_data = np.load('/Users/JoeyA/Research/SPHEREx/covapt_mt/data/input_data/k_emu_test.npz')
     k = k_data["k_0"]
     # k = np.array([0.00694, 0.01482, 0.0227, 0.03058, 0.03846, 0.04634, 0.05422, 0.0621, 0.06998,
     #           0.07786, 0.08574, 0.09362, 0.1015,  0.10938, 0.11726, 0.12514, 0.13302, 0.1409,
@@ -42,7 +42,7 @@ def main():
     galaxy_ps = theory(k, ells, param_vector) / cosmo_dict["cosmo_params"]["h"]["value"]**3
 
     print(galaxy_ps.shape)
-    np.save('/home/joeadamo/Research/SPHEREx/covapt_mt/data/input_data/ps_emu_test_1_tracer.npy', galaxy_ps)
+    np.save('/Users/JoeyA/Research/SPHEREx/covapt_mt/data/input_data/ps_emu_test_1_tracer_no_noise.npy', galaxy_ps)
 
 if __name__ == "__main__":
     main()
