@@ -15,14 +15,6 @@ import spherex_emu.filepaths as filepaths
 # GLOBAL VARIABLES
 #-------------------------------------------------------------------
 
-#k = np.linspace(0.01, 0.2, 50)
-k = np.array([0.002093, 0.004879 ,0.007665 ,0.010451, 0.013237 ,0.016023 ,0.018809 ,0.021595,0.024381, 0.027167, 0.029953, 0.032739, 0.035525, 0.038311, 0.041097, 0.043883,
-         0.046669, 0.049455, 0.052241, 0.055027, 0.057813, 0.060599, 0.063385, 0.066171,
-         0.068957, 0.071743, 0.074529, 0.077315, 0.080101, 0.082887, 0.085673, 0.088459,
-         0.091245, 0.094031, 0.096817, 0.099603, 0.102389, 0.105175, 0.107961, 0.110747,
-         0.113533, 0.116319, 0.119105, 0.121891, 0.124677, 0.127463, 0.130249, 0.133035,
-         0.135821, 0.138607]) / 0.7
-
 N = 100000
 N_PROC=int(os.environ["SLURM_CPUS_ON_NODE"])
 #N_PROC=14
@@ -42,6 +34,10 @@ survey_config_file = filepaths.survey_pars_dir+'survey_pars_single_sample_single
 #save_dir = filepaths.data_dir
 save_dir = '/home/u14/gibbins/spherex_emu/spherex_emu/data/100k_eft/'
 #save_dir = '/home/u12/jadamo/Data/Training-Set-EFT-1s-1z/'
+assert os.path.exists(save_dir)
+
+k_data = np.load(save_dir+"kbins.npz")
+k = k_data["k_0"]
 
 #-------------------------------------------------------------------
 # FUNCTIONS
@@ -86,8 +82,6 @@ def get_power_spectrum(sample, param_names, cosmo_dict, ps_config):
 # MAIN
 #-------------------------------------------------------------------
 def main():
-    
-    assert os.path.exists(save_dir)
 
     cosmo_dict  = load_config_file(cosmo_config_file)
     survey_dict = load_config_file(survey_config_file)
