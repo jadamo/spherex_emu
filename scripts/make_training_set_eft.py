@@ -24,7 +24,6 @@ train_frac = 0.8
 valid_frac = 0.1
 test_frac  = 0.1
 
-net_config_file = filepaths.network_pars_dir+"network_pars_single_sample_single_redshift.yaml"
 cosmo_config_file = filepaths.cosmo_pars_dir+"eft_single_sample_single_redshift.yaml"
 survey_config_file = filepaths.survey_pars_dir+'survey_pars_single_sample_single_redshift.yaml'
 
@@ -62,7 +61,7 @@ def prepare_header_info(param_names, fiducial_cosmology, n_samples):
 
 def get_power_spectrum(sample, param_names, cosmo_dict, ps_config):
 
-    ells = [0, 1, 2, 3, 4]
+    ells = [0, 2]
     num_samples = ps_config['number_density_table'].shape[0]
     num_zbins = len(ps_config["redshift_list"])
     sample_dict = dict(zip(param_names, sample))
@@ -85,7 +84,6 @@ def main():
 
     cosmo_dict  = load_config_file(cosmo_config_file)
     survey_dict = load_config_file(survey_config_file)
-    config_dict = load_config_file(net_config_file)
 
     ndens_table = np.array([[float(survey_dict['number_density_in_hinvMpc_%s' % (i+1)][j]) for j in range(survey_dict['nz'])] for i in range(survey_dict['nsample'])])
     z_eff = (np.array(survey_dict["zbin_lo"]) + np.array(survey_dict["zbin_hi"])) / 2.
@@ -149,7 +147,7 @@ def main():
     print("{:0.0f} ({:0.2f}%) power spectra failed to compute".format(fail_compute, 100.*fail_compute / N))
 
     organize_training_set(save_dir, train_frac, valid_frac, test_frac,
-                          samples.shape[1], len(z_eff), num_spectra, 5, len(k), True)
+                          samples.shape[1], len(z_eff), num_spectra, 2, len(k), True)
 
 if __name__ == "__main__":
     main()

@@ -202,33 +202,32 @@ class pk_emulator():
         """Loads the inverse data covariance matrix for use in certain loss functions and normalizations"""
         # TODO: Upgrade to handle different number of k-bins for each zbin
         cov_file = base_dir+self.training_dir
-        if os.path.exists(cov_file+"invcov.npz"):
-            self.invcov = torch.from_numpy(np.load(cov_file+"invcov.npy")).to(torch.float32).to(self.device)
-            #for key, value in self.invcov.items():
-            #    self.invcov[key] = value.to(self.device)
+        # Temporarily store with double percision to increase numerical stability
+        if os.path.exists(cov_file+"invcov.npy"):
+            self.invcov = torch.from_numpy(np.load(cov_file+"invcov.npy"))
         elif os.path.exists(cov_file+"invcov.dat"):
-            self.invcov = torch.load(cov_file+"invcov.dat")
-            self.invcov = self.invcov["zbin_0"].unsqueeze(0).to(torch.float32).to(self.device)
+            self.invcov = torch.load(cov_file+"invcov.dat").to(torch.float64)
         else:
             self.invcov = torch.eye(self.num_ells*self.num_spectra*self.num_kbins).unsqueeze(0)
-            self.invcov = self.invcov.repeat(self.num_zbins, 1, 1).to(self.device)
+            self.invcov = self.invcov.repeat(self.num_zbins, 1, 1)  
 
     def _diagonalize_covariance(self):
         """performs an eigenvalue decomposition of the inverse covariance matrix"""
-        self.Q = torch.zeros_like(self.invcov)
-        self.Q_inv = torch.zeros_like(self.invcov)
-        self.sqrt_eigvals = torch.zeros((self.invcov.shape[0], self.invcov.shape[1]), device=self.device)
+        self.Q = [] #torch.zeros_like(self.invcov)
+        self.Q_inv = [] #torch.zeros_like(self.invcov)
+        self.sqrt_eigvals = [] #= torch.zeros((self.invcov.shape[0][0], self.invcov.shape[0][1]), device=self.device)
         for z in range(self.num_zbins):
             eig, q = torch.linalg.eigh(self.invcov[z])
-            self.Q[z] = q.real
-            self.Q_inv[z] = torch.linalg.inv(q).real
-            self.sqrt_eigvals[z] = eig.real
 
-        # store the square root of the eigenvalues to reduce number of floating point operations
-        assert torch.all(torch.isnan(self.Q)) == False
-        assert torch.all(torch.isnan(self.Q_inv)) == False
-        assert torch.all(self.sqrt_eigvals > 0), "ERROR! covariance matrix has negative eigenvalues? Is it positive definite?"
-        self.sqrt_eigvals = torch.sqrt(self.sqrt_eigvals)
+            assert torch.all(torch.isnan(q)) == False
+            assert torch.all(eig > 0), "ERROR! inverse covariance matrix has negative eigenvalues? Is it positive definite?"
+            
+            self.Q.append(q.real.to(torch.float32).to(self.device))
+            self.Q_inv.append(torch.linalg.inv(q).real.to(torch.float32).to(self.device))
+            # store the sqrt of the eigenvalues to reduce # of floating point operations
+            self.sqrt_eigvals.append(torch.sqrt(eig.real).to(torch.float32).to(self.device))
+
+        self.invcov = self.invcov.to(torch.float32).to(self.device)
 
     def _init_loss(self):
         """Defines the loss function to use"""
@@ -316,6 +315,7 @@ class pk_emulator():
     def _train_one_epoch(self, train_loader):
         """basic training loop"""
         total_loss = 0.
+        torch.autograd.set_detect_anomaly(True)
         for (i, batch) in enumerate(train_loader):
             #params = train_loader.dataset.get_repeat_params(batch[2], self.num_zbins, self.num_samples)
             params = normalize_cosmo_params(batch[0], self.input_normalizations)

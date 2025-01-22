@@ -5,9 +5,9 @@ from spherex_emu.utils import prepare_ps_inputs, load_config_file
 import spherex_emu.filepaths as filepaths 
 
 def main():
-    cosmo_dict = load_config_file(filepaths.cosmo_pars_dir+"eft_3_sample_1_redshift.yaml")
-    survey_pars = load_config_file(filepaths.survey_pars_dir + 'survey_pars_3_sample_1_redshift.yaml')
-    
+    cosmo_dict = load_config_file(filepaths.cosmo_pars_dir+"eft_2_sample_2_redshift.yaml")
+    survey_pars = load_config_file(filepaths.survey_pars_dir + 'survey_pars_2_sample_2_redshift.yaml')
+
     ndens_table = np.array([[float(survey_pars['number_density_in_hinvMpc_%s' % (i+1)][j]) for j in range(survey_pars['nz'])] for i in range(survey_pars['nsample'])])
     z_eff = (np.array(survey_pars["zbin_lo"]) + np.array(survey_pars["zbin_hi"])) / 2.
     
@@ -20,7 +20,8 @@ def main():
     
     # set parameters to be different from their fiducial values here
     #alternate_params = {"As": 2.2e-9, "h" : 0.7, "b1_0_0" : 1.5, "b1_0_1" : 1.6, "bG2" : 0.2}
-    alternate_params = {}
+    alternate_params = {"P_shot" : 1.}
+    alternate_params = {"fnl" : 0}
 
     param_vector = prepare_ps_inputs(alternate_params, cosmo_dict, ndens_table.shape[0], len(z_eff))
     #k = np.linspace(0.01, 0.25, 25)
@@ -33,7 +34,7 @@ def main():
     galaxy_ps = theory(k, ells, param_vector) / cosmo_dict["cosmo_params"]["h"]["value"]**3
 
     print(galaxy_ps.shape)
-    np.save('/home/joeadamo/Research/SPHEREx/covapt_mt/data/input_data/ps_emu_test_3_tracer_no_noise.npy', galaxy_ps)
+    np.save('/home/joeadamo/Research/Data/SPHEREx-Data/blinding_files/ps_fnl_0.npy', galaxy_ps)
 
 if __name__ == "__main__":
     main()
