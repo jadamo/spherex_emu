@@ -213,19 +213,19 @@ class pk_emulator():
 
     def _diagonalize_covariance(self):
         """performs an eigenvalue decomposition of the inverse covariance matrix"""
-        self.Q = [] #torch.zeros_like(self.invcov)
-        self.Q_inv = [] #torch.zeros_like(self.invcov)
-        self.sqrt_eigvals = [] #= torch.zeros((self.invcov.shape[0][0], self.invcov.shape[0][1]), device=self.device)
+        self.Q = torch.zeros_like(self.invcov)
+        self.Q_inv = torch.zeros_like(self.invcov)
+        self.sqrt_eigvals = torch.zeros((self.invcov.shape[0], self.invcov.shape[1]), device=self.device)
         for z in range(self.num_zbins):
             eig, q = torch.linalg.eigh(self.invcov[z])
 
             assert torch.all(torch.isnan(q)) == False
             assert torch.all(eig > 0), "ERROR! inverse covariance matrix has negative eigenvalues? Is it positive definite?"
             
-            self.Q.append(q.real.to(torch.float32).to(self.device))
-            self.Q_inv.append(torch.linalg.inv(q).real.to(torch.float32).to(self.device))
+            self.Q[z] = q.real.to(torch.float32).to(self.device)
+            self.Q_inv[z] = torch.linalg.inv(q).real.to(torch.float32).to(self.device)
             # store the sqrt of the eigenvalues to reduce # of floating point operations
-            self.sqrt_eigvals.append(torch.sqrt(eig.real).to(torch.float32).to(self.device))
+            self.sqrt_eigvals[z] = torch.sqrt(eig.real).to(torch.float32).to(self.device)
 
         self.invcov = self.invcov.to(torch.float32).to(self.device)
 

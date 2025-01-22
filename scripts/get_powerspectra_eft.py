@@ -20,8 +20,7 @@ def main():
     
     # set parameters to be different from their fiducial values here
     #alternate_params = {"As": 2.2e-9, "h" : 0.7, "b1_0_0" : 1.5, "b1_0_1" : 1.6, "bG2" : 0.2}
-    alternate_params = {"P_shot" : 1.}
-    alternate_params = {"fnl" : 0}
+    alternate_params = {"P_shot" : 1., "fnl": 2}
 
     param_vector = prepare_ps_inputs(alternate_params, cosmo_dict, ndens_table.shape[0], len(z_eff))
     #k = np.linspace(0.01, 0.25, 25)
@@ -34,7 +33,9 @@ def main():
     galaxy_ps = theory(k, ells, param_vector) / cosmo_dict["cosmo_params"]["h"]["value"]**3
 
     print(galaxy_ps.shape)
-    np.save('/home/joeadamo/Research/Data/SPHEREx-Data/blinding_files/ps_fnl_0.npy', galaxy_ps)
+    save_str = '/home/joeadamo/Research/Data/SPHEREx-Data/blinding_files/ps_fnl_2.npy'
+    print("saving to: ", save_str)
+    np.save(save_str, galaxy_ps)
 
 if __name__ == "__main__":
     main()
