@@ -7,7 +7,7 @@ import spherex_emu.models.blocks as blocks
 
 class transformer(nn.Module):
 
-    def __init__(self, config_dict):
+    def __init__(self, config_dict, device):
         super().__init__()
 
         # TODO: Allow specification of activation function
@@ -61,6 +61,7 @@ class transformer(nn.Module):
                 self.transformer_blocks[z].add_module("Transformer"+str(i+1),
                         blocks.block_transformer_encoder(embedding_dim, split_dim, 0.1))
                 self.transformer_blocks[z].add_module("Activation"+str(i+1), blocks.activation_function(embedding_dim))
+                self.transformer_blocks[z].to(device)
 
         self.output_layer = blocks.linear_with_channels(embedding_dim, self.output_dim, self.num_zbins)
         #self.output_layer = nn.Linear(embedding_dim, self.output_dim)

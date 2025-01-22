@@ -167,7 +167,7 @@ class pk_emulator():
         if self.model_type == "mlp":
             self.model = mlp(self.config_dict).to(self.device)
         elif self.model_type == "transformer":
-            self.model = transformer(self.config_dict).to(self.device)
+            self.model = transformer(self.config_dict, self.device).to(self.device)
         else:
             print("ERROR: Invalid value for model type")
             raise KeyError
