@@ -60,7 +60,7 @@ class pk_emulator():
         self.sqrt_eigvals = torch.load(path+"eigenvals.dat", map_location=self.device)
         self.Q = torch.load(path+"eigenvectors.dat", map_location=self.device)
         for z in range(self.num_zbins):
-            self.Q_inv[z] = torch.linalg.inv(self.Q[z])
+            self.Q_inv[z] = torch.linalg.inv(self.Q[z].to(torch.float64)).to(torch.float32)
         #self.output_normalizations = torch.load(path+"output_normalization.dat", map_location=self.device)
 
     def load_data(self, key: str, data_frac = 1.0, return_dataloader=True, data_dir=""):
@@ -212,7 +212,8 @@ class pk_emulator():
             self.invcov = self.invcov.repeat(self.num_zbins, 1, 1)  
 
     def _diagonalize_covariance(self):
-        """performs an eigenvalue decomposition of the inverse covariance matrix"""
+        """performs an eigenvalue decomposition of the inverse covariance matrix
+           this function is always performed on cpu in double percision to improve stability"""
         self.Q = torch.zeros_like(self.invcov)
         self.Q_inv = torch.zeros_like(self.invcov)
         self.sqrt_eigvals = torch.zeros((self.invcov.shape[0], self.invcov.shape[1]), device=self.device)
@@ -222,12 +223,16 @@ class pk_emulator():
             assert torch.all(torch.isnan(q)) == False
             assert torch.all(eig > 0), "ERROR! inverse covariance matrix has negative eigenvalues? Is it positive definite?"
             
-            self.Q[z] = q.real.to(torch.float32).to(self.device)
-            self.Q_inv[z] = torch.linalg.inv(q).real.to(torch.float32).to(self.device)
+            self.Q[z] = q.real
+            self.Q_inv[z] = torch.linalg.inv(q).real
             # store the sqrt of the eigenvalues to reduce # of floating point operations
-            self.sqrt_eigvals[z] = torch.sqrt(eig.real).to(torch.float32).to(self.device)
+            self.sqrt_eigvals[z] = torch.sqrt(eig.real)
 
+        # move data to gpu and convert to single percision
         self.invcov = self.invcov.to(torch.float32).to(self.device)
+        self.Q = self.Q.to(torch.float32).to(self.device)
+        self.Q_inv = self.Q_inv.to(torch.float32).to(self.device)
+        self.sqrt_eigvals = self.sqrt_eigvals.to(torch.float32).to(self.device)
 
     def _init_loss(self):
         """Defines the loss function to use"""

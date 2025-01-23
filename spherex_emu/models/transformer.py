@@ -54,7 +54,7 @@ class transformer(nn.Module):
         #self.embedding_layer = nn.Linear(config_dict["mlp_dims"][0], embedding_dim)
 
         # do one transformer block per z-bin for now
-        self.transformer_blocks = []
+        self.transformer_blocks = nn.ModuleList()
         for z in range(self.num_zbins):
             self.transformer_blocks.append(nn.Sequential())
             for i in range(config_dict["num_transformer_blocks"]):

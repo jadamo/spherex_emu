@@ -15,13 +15,13 @@ from spherex_emu.utils import load_config_file, get_parameter_ranges, prepare_ps
 # load in the fiducial data vector, emulator, and (inverse) covariance matrix
 emulator_dir = filepaths.base_dir+"/emulators/transformer_3_sample_1_redshift/"
 training_dir = filepaths.base_dir+"../../Data/SPHEREx-Data/Training-Set-EFT-3s-1z/"
-save_dir = filepaths.base_dir+"chains/ps_1loop/"
-invcov_dir = "/Users/JoeyA/Research/SPHEREx/covapt_mt/data/output_data/invcov.dat"
+save_dir = filepaths.base_dir+"chains/eft_3_tracer/"
+invcov_dir = "/home/joeadamo/Research/SPHEREx/covapt_mt/data/output_data/invcov.dat"
 use_emulator = False
 
 # get cosmology and survey parameters
-cosmo_dict = load_config_file(filepaths.cosmo_pars_dir+"eft_single_sample_single_redshift.yaml")
-survey_pars = load_config_file(filepaths.survey_pars_dir + 'survey_pars_single_sample_single_redshift.yaml')
+cosmo_dict = load_config_file(filepaths.cosmo_pars_dir+"eft_3_sample_1_redshift.yaml")
+survey_pars = load_config_file(filepaths.survey_pars_dir + 'survey_pars_3_sample_1_redshift.yaml')
 
 invcov_data = torch.load(invcov_dir)
 invcov = invcov_data["zbin_0"].to("cpu").detach().numpy()
@@ -36,7 +36,7 @@ ells = [0,2]
 emulator = pk_emulator(emulator_dir+"config.yaml")
 emulator.load_trained_model()
 
-data_vector_file = "/Users/JoeyA/Research/SPHEREx/covapt_mt/data/input_data/ps_emu_test_1_tracer_no_noise.npy"
+data_vector_file = "/home/joeadamo/Research/SPHEREx/covapt_mt/data/input_data/ps_emu_test_3_tracer_no_noise.npy"
 data_vector = np.load(data_vector_file)
 #data_vector = emulator.ps_fid.view(emulator.num_zbins, emulator.num_spectra, emulator.num_kbins, 2).to("cpu").detach().numpy()
 #data_vector = data_vector.transpose(0, 1, 3, 2)
@@ -54,15 +54,15 @@ ps_config['redshift_list'] = list(z_eff) # redshift bins
 ps_config['Omega_m_ref'] = 0.3 # Omega_m value of the reference cosmology (assuming a flat LambdaCDM)
 theory = ps_theory_calculator.PowerSpectrumMultipole1Loop(ps_config)
 
-#param_names, param_ranges = get_parameter_ranges(cosmo_dict)
+param_names, param_ranges = get_parameter_ranges(cosmo_dict)
 #param_ranges = param_ranges[:2]
 #param_names = param_names[:2]
 
 # manually define parameters to vary
-param_names = ["fnl", "b1", "b2"]
-param_ranges = np.array([[-100, 100],
-                         [0.1, 4.0],
-                         [-2, 1.0]])
+# param_names = ["fnl", "b1", "b2"]
+# param_ranges = np.array([[-75, 75],
+#                          [0.5, 4.0],
+#                          [-1.5, 0.5]])
 
 # define the likelhood functions
 def prior(theta, param_ranges):
@@ -82,7 +82,7 @@ def get_eft_model_vector(theta):
         params_dict[pname] = theta[idx]
         idx+=1
 
-    params = prepare_ps_inputs(params_dict, cosmo_dict, 1, 1)
+    params = prepare_ps_inputs(params_dict, cosmo_dict, 3, 1)
     # If varying h, make sure to divide by the varied h value!
     model_vector = theory(k, ells, params) / cosmo_dict["cosmo_params"]["h"]["value"]**3
     #model_vector = theory(k, ells, params) / params_dict["h"]**3
@@ -116,14 +116,15 @@ def main():
 
     sampler = ultranest.ReactiveNestedSampler(param_names, log_lkl, prior_transform,
                                         log_dir=save_dir, resume="overwrite")
-    #sampler.stepsampler = ultranest.stepsampler.SliceSampler(
-    #    nsteps=50,
-    #    generate_direction=ultranest.stepsampler.generate_mixture_random_direction,
-        # adaptive_nsteps=False,
-        # max_nsteps=400
-    #)
+    sampler.stepsampler = ultranest.stepsampler.SliceSampler(
+       nsteps=40,
+       generate_direction=ultranest.stepsampler.generate_mixture_random_direction,
+        adaptive_nsteps=False,
+        max_nsteps=400
+    )
     t1 = time.time()
-    results = sampler.run(max_ncalls=5e5)
+    results = sampler.run(update_interval_volume_fraction=0.7,
+                          max_ncalls=1e6)
     t2 = time.time()
     sampler.print_results()
     print("Done in {:0.0f}m {:0.1f}s".format(int((t2-t1) / 60), (t2-t1) % 60))
