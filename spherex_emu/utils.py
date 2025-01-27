@@ -216,7 +216,7 @@ def normalize_power_spectrum_diagonal(ps, ps_fid, inv_cov):
                        
     return ps_new
 
-def normalize_power_spectruml(ps, ps_fid, sqrt_eigvals, Q):
+def normalize_power_spectrum(ps, ps_fid, sqrt_eigvals, Q):
     ps_new = torch.zeros_like(ps)
     for z in range(ps_new.shape[1]):
         ps_new[:,z] = ((ps[:, z].flatten() @ Q) - (ps_fid[z].flatten() @ Q)) * sqrt_eigvals
