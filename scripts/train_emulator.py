@@ -1,13 +1,15 @@
 from spherex_emu.emulator import pk_emulator
-from spherex_emu.filepaths import network_pars_dir
-import math, time
+import math, time, sys
 import torch
 
 def main():
 
-    config_file = network_pars_dir + "network_pars_3_sample_1_redshift.yaml"
+    if len(sys.argv) < 2:
+        print("USAGE: python train_emulator.py <config_file>")
+        return 0
+
     t1 = time.time()
-    emulator = pk_emulator(config_file)
+    emulator = pk_emulator(sys.argv[1])
     print("Training network on device:", emulator.device)
     emulator.train()
     t2 = time.time()

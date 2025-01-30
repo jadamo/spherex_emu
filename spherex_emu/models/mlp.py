@@ -5,7 +5,6 @@ import itertools, math
 
 import spherex_emu.models.blocks as blocks
 from spherex_emu.utils import get_parameter_ranges, load_config_file, un_normalize
-from spherex_emu.filepaths import base_dir
 
 class mlp(nn.Module):
 
@@ -21,7 +20,7 @@ class mlp(nn.Module):
         self.num_bias_params  = config_dict["num_bias_params"]
         self.output_normalizations = None
 
-        cosmo_file = load_config_file(base_dir + config_dict["cosmo_dir"])
+        cosmo_file = load_config_file(config_dict["input_dir"] + config_dict["cosmo_dir"])
         __, bounds = get_parameter_ranges(cosmo_file)
         self.register_buffer("bounds", self.organize_params(torch.Tensor(bounds.T)))
 

@@ -11,8 +11,6 @@ from spherex_emu.dataset import pk_galaxy_dataset
 from spherex_emu.utils import load_config_file, calc_avg_loss, get_parameter_ranges,\
                               normalize_cosmo_params, un_normalize_power_spectrum, \
                               delta_chi_squared, mse_loss, hyperbolic_loss, hyperbolic_chi2_loss
-# TODO: remove this feature since it breaks when installed without -e
-from spherex_emu.filepaths import base_dir
 
 class pk_emulator():
     """Class defining the neural network emulator."""
@@ -49,7 +47,7 @@ class pk_emulator():
             path: The directory+filename of the trained network to load. 
             If blank, uses "save_dir" found in the object's config dictionary
         """
-        if path == "": path = base_dir+self.save_dir
+        if path == "": path = self.input_dir+self.save_dir
         self.model.eval()
         self.model.load_state_dict(torch.load(path+'network.params', map_location=self.device))
         
@@ -79,7 +77,7 @@ class pk_emulator():
         """
 
         if data_dir != "": dir = data_dir
-        else :             dir = base_dir+self.training_dir
+        else :             dir = self.input_dir+self.training_dir
 
         if key in ["training", "validation", "testing"]:
             data = pk_galaxy_dataset(dir, key, data_frac)
@@ -175,7 +173,7 @@ class pk_emulator():
     def _init_input_normalizations(self):
         """Initializes input and normalization factors"""
         try:
-            cosmo_dict = load_config_file(base_dir+self.cosmo_dir)
+            cosmo_dict = load_config_file(self.input_dir+self.cosmo_dir)
             __, bounds = get_parameter_ranges(cosmo_dict)
             self.input_normalizations = torch.Tensor(bounds.T).to(self.device)
         except IOError:
@@ -189,7 +187,8 @@ class pk_emulator():
 
     def _init_fiducial_power_spectrum(self):
         """Loads the fiducial power spectrum for use in normalization"""
-        ps_file = base_dir+self.training_dir+"ps_fid.npy"
+        ps_file = self.input_dir+self.training_dir+"ps_fid.npy"
+
         if os.path.exists(ps_file):
             self.ps_fid = torch.from_numpy(np.load(ps_file)).to(self.device).to(torch.float32)
             if self.ps_fid.shape[3] == self.num_kbins:
@@ -201,7 +200,7 @@ class pk_emulator():
     def _init_inverse_covariance(self):
         """Loads the inverse data covariance matrix for use in certain loss functions and normalizations"""
         # TODO: Upgrade to handle different number of k-bins for each zbin
-        cov_file = base_dir+self.training_dir
+        cov_file = self.input_dir+self.training_dir
         # Temporarily store with double percision to increase numerical stability
         if os.path.exists(cov_file+"invcov.npy"):
             self.invcov = torch.from_numpy(np.load(cov_file+"invcov.npy"))
@@ -285,21 +284,21 @@ class pk_emulator():
         training_data = torch.vstack([torch.Tensor(self.train_loss), 
                                       torch.Tensor(self.valid_loss),
                                       torch.Tensor(self.effective_lr)])
-        torch.save(training_data, base_dir+self.save_dir+"train_data.dat")
+        torch.save(training_data, self.input_dir+self.save_dir+"train_data.dat")
         
         # configuration data
-        with open(base_dir+self.save_dir+'config.yaml', 'w') as outfile:
+        with open(self.input_dir+self.save_dir+'config.yaml', 'w') as outfile:
             yaml.dump(dict(self.config_dict), outfile, sort_keys=False, default_flow_style=False)
 
         # data needed for normalization
-        torch.save(self.input_normalizations, base_dir+self.save_dir+"param_bounds.dat")
+        torch.save(self.input_normalizations, self.input_dir+self.save_dir+"param_bounds.dat")
 
-        torch.save(self.ps_fid, base_dir+self.save_dir+"ps_fid.dat")
-        torch.save(self.invcov, base_dir+self.save_dir+"invcov.dat")
-        torch.save(self.sqrt_eigvals, base_dir+self.save_dir+"eigenvals.dat")
-        torch.save(self.Q, base_dir+self.save_dir+"eigenvectors.dat")
+        torch.save(self.ps_fid, self.input_dir+self.save_dir+"ps_fid.dat")
+        torch.save(self.invcov, self.input_dir+self.save_dir+"invcov.dat")
+        torch.save(self.sqrt_eigvals, self.input_dir+self.save_dir+"eigenvals.dat")
+        torch.save(self.Q, self.input_dir+self.save_dir+"eigenvectors.dat")
         #torch.save(self.output_normalizations, base_dir+self.save_dir+"output_normalization.dat")
-        torch.save(self.model.state_dict(), base_dir+self.save_dir+'network.params')
+        torch.save(self.model.state_dict(), self.input_dir+self.save_dir+'network.params')
 
     def _check_params(self, params):
         """checks that input parameters are in the expected format and within the specified boundaries"""
