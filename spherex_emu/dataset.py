@@ -61,7 +61,7 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
                         self.output_normalizations[1,zbin,sample,ell] = torch.amax(self.pk[:,zbin, sample, ell, :]).item()
             torch.save(self.output_normalizations, data_dir+"pk-normalization.dat")
         elif os.path.exists(data_dir+"pk-normalization.dat"):
-            self.output_normalizations = torch.load(data_dir+"pk-normalization.dat")
+            self.output_normalizations = torch.load(data_dir+"pk-normalization.dat", weights_only=True)
 
     def __len__(self):
         return self.params.shape[0]

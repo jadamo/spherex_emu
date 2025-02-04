@@ -329,7 +329,6 @@ class pk_emulator():
     def _train_one_epoch(self, train_loader):
         """basic training loop"""
         total_loss = 0.
-        torch.autograd.set_detect_anomaly(True)
         t = 0
         for (i, batch) in enumerate(train_loader):
             t1 = time.time()
@@ -347,7 +346,7 @@ class pk_emulator():
             loss.backward()
 
             self.optimizer.step()
-            total_loss += loss
+            total_loss += loss.detach()
             t+= (time.time() - t1)
         if self.print_progress: print("time for epoch: {:0.1f}s, time per batch: {:0.1f}ms".format(t, 1000*t / len(train_loader)))
-        return total_loss / len(train_loader)
+        return (total_loss / len(train_loader))
