@@ -35,12 +35,15 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self.cosmo_params = header_info["cosmo_params"]
         self.bias_params = header_info["bias_params"]
 
+        self.pk = torch.transpose(self.pk, 3, 4)
+        # This line is temprary!!
+        self.pk = self.pk[:,0,:,:,:].unsqueeze(1)
+        #print(self.pk.shape)
+
         self.num_zbins = self.pk.shape[1]
         self.num_samples = self.pk.shape[2]
-        self.num_ells = self.pk.shape[3]
-        self.num_kbins = self.pk.shape[4]
-
-        self.pk = torch.transpose(self.pk, 3, 4)
+        self.num_ells = self.pk.shape[4]
+        self.num_kbins = self.pk.shape[3]
 
         if frac != 1.:
             N_frac = int(self.params.shape[0] * frac)

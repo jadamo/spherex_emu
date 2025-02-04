@@ -13,7 +13,8 @@ def main():
     print("Training network on device:", emulator.device)
     emulator.train()
     t2 = time.time()
-    print("Training Done in took {:0.0f} minutes {:0.2f} seconds\n".format(math.floor((t2 - t1)/60), (t2 - t1)%60))
+    print("Training Done in {:0.0f} hours {:0.0f} minutes {:0.2f} seconds\n".format(
+        (t2-t1)//60), ((t2-t1) % 3600) // 60, (t2-t1)%60)
 
 if __name__ == "__main__":
     main()

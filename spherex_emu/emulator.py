@@ -7,6 +7,7 @@ import yaml, math, os
 from spherex_emu.models import blocks
 from spherex_emu.models.mlp import mlp
 from spherex_emu.models.transformer import transformer
+from spherex_emu.models.stacked_transformer import stacked_transformer
 from spherex_emu.dataset import pk_galaxy_dataset
 from spherex_emu.utils import load_config_file, calc_avg_loss, get_parameter_ranges,\
                               normalize_cosmo_params, un_normalize_power_spectrum, \
@@ -166,6 +167,8 @@ class pk_emulator():
             self.model = mlp(self.config_dict).to(self.device)
         elif self.model_type == "transformer":
             self.model = transformer(self.config_dict, self.device).to(self.device)
+        elif self.model_type == "stacked_transformer":
+            self.model = stacked_transformer(self.config_dict).to(self.device)
         else:
             print("ERROR: Invalid value for model type")
             raise KeyError
@@ -179,7 +182,6 @@ class pk_emulator():
         except IOError:
             self.input_normalizations = torch.vstack((torch.zeros((self.num_cosmo_params + (self.num_samples*self.num_zbins*self.num_bias_params))),
                                                       torch.ones((self.num_cosmo_params + (self.num_samples*self.num_zbins*self.num_bias_params))))).to(self.device)
-
         # NOTE: Old way of doing output normalizations
         # self.output_normalizations = torch.cat((torch.zeros((self.num_zbins, self.num_spectra, 2, 1)),
         #                                         torch.ones((self.num_zbins, self.num_spectra, 2, 1)))).to(self.device)
@@ -193,6 +195,7 @@ class pk_emulator():
             self.ps_fid = torch.from_numpy(np.load(ps_file)).to(self.device).to(torch.float32)
             if self.ps_fid.shape[3] == self.num_kbins:
                 self.ps_fid = torch.permute(self.ps_fid, (0, 1, 3, 2))
+            self.ps_fid = self.ps_fid[0,:,:,:]
             self.ps_fid = self.ps_fid.reshape(self.num_zbins, self.num_spectra * self.num_kbins * self.num_ells)
         else:
             self.ps_fid = torch.zeros((self.num_zbins, self.num_spectra * self.num_ells * self.num_kbins)).to(self.device)
@@ -206,6 +209,8 @@ class pk_emulator():
             self.invcov = torch.from_numpy(np.load(cov_file+"invcov.npy"))
         elif os.path.exists(cov_file+"invcov.dat"):
             self.invcov = torch.load(cov_file+"invcov.dat").to(torch.float64)
+            self.invcov = self.invcov[0].unsqueeze(0)
+            #self.invcov = self.invcov[0,:50, :50].unsqueeze(0)
         else:
             self.invcov = torch.eye(self.num_ells*self.num_spectra*self.num_kbins).unsqueeze(0)
             self.invcov = self.invcov.repeat(self.num_zbins, 1, 1)  
@@ -308,7 +313,7 @@ class pk_emulator():
 
         # for now, assume that params should be 1D and in the form
         # [cosmo_params, bias_params for each sample / zbin grouped together]
-        assert params.shape[0] == self.num_cosmo_params + (self.num_bias_params * self.num_zbins * self.num_samples)
+        # assert params.shape[0] == self.num_cosmo_params + (self.num_bias_params * self.num_zbins * self.num_samples)
         
         if torch.any(params < self.input_normalizations[0]) or \
            torch.any(params > self.input_normalizations[1]):

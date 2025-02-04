@@ -68,7 +68,7 @@ class block_resnet(nn.Module):
 
         self.layers = nn.Sequential()
         self.layers.add_module("layer0",    nn.Linear(input_dim, output_dim))
-        self.layers.add_module("Activation", activation_function())
+        self.layers.add_module("Activation", activation_function(output_dim))
         for i in range(num_layers-1):
             self.layers.add_module("layer"+str(i+1), nn.Linear(output_dim, output_dim))
             self.layers.add_module("bn"+str(i+1),    nn.BatchNorm1d(output_dim))
