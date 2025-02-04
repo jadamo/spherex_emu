@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import numpy as np
-import yaml, math, os
+import yaml, math, os, time
 
 from spherex_emu.models import blocks
 from spherex_emu.models.mlp import mlp
@@ -93,7 +93,7 @@ class pk_emulator():
             if return_dataloader: return data_loader
             else: return data
 
-    def train(self, print_progress = True):
+    def train(self):
         """Trains the network"""
         train_loader = self.load_data("training", self.training_set_fraction)
         valid_loader = self.load_data("validation")
@@ -103,7 +103,7 @@ class pk_emulator():
         self.effective_lr = []
         best_loss = torch.inf
 
-        if print_progress: print("Initial learning rate = {:0.2e}".format(self.learning_rate))
+        if self.print_progress: print("Initial learning rate = {:0.2e}".format(self.learning_rate))
         
         self._set_optimizer()
         self.model.train()
@@ -111,9 +111,14 @@ class pk_emulator():
         epochs_since_update = 0
         for epoch in range(self.num_epochs):
 
-            self._train_one_epoch(train_loader)
-            self.train_loss.append(calc_avg_loss(self.model, train_loader, self.input_normalizations, self.ps_fid, self.invcov, self.sqrt_eigvals, self.Q, self.Q_inv, self.loss_function))
+            training_loss = self._train_one_epoch(train_loader)
+            t1 = time.time()
+            if self.recalculate_train_loss:
+                self.train_loss.append(calc_avg_loss(self.model, train_loader, self.input_normalizations, self.ps_fid, self.invcov, self.sqrt_eigvals, self.Q, self.Q_inv, self.loss_function))
+            else:
+                self.train_loss.append(training_loss)
             self.valid_loss.append(calc_avg_loss(self.model, valid_loader, self.input_normalizations, self.ps_fid, self.invcov, self.sqrt_eigvals, self.Q, self.Q_inv, self.loss_function))
+            #print("loss stats took {:0.1f}s to calculate".format(time.time() - t1))
             self.effective_lr.append(self.optimizer.param_groups[0]['lr'])
             self.scheduler.step(self.valid_loss[-1])
 
@@ -124,7 +129,7 @@ class pk_emulator():
             else:
                 epochs_since_update += 1
 
-            if print_progress: print("Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(epoch, self.train_loss[-1], self.valid_loss[-1], epochs_since_update))
+            if self.print_progress: print("Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(epoch, self.train_loss[-1], self.valid_loss[-1], epochs_since_update))
             if epochs_since_update > self.early_stopping_epochs:
                 print("Model has not impvored for {:0.0f} epochs. Initiating early stopping...".format(epochs_since_update))
                 break
@@ -192,7 +197,7 @@ class pk_emulator():
         ps_file = self.input_dir+self.training_dir+"ps_fid.npy"
 
         if os.path.exists(ps_file):
-            self.ps_fid = torch.from_numpy(np.load(ps_file)).to(self.device).to(torch.float32)
+            self.ps_fid = torch.from_numpy(np.load(ps_file)).to(torch.float32).to(self.device)
             if self.ps_fid.shape[3] == self.num_kbins:
                 self.ps_fid = torch.permute(self.ps_fid, (0, 1, 3, 2))
             self.ps_fid = self.ps_fid[0,:,:,:]
@@ -208,7 +213,7 @@ class pk_emulator():
         if os.path.exists(cov_file+"invcov.npy"):
             self.invcov = torch.from_numpy(np.load(cov_file+"invcov.npy"))
         elif os.path.exists(cov_file+"invcov.dat"):
-            self.invcov = torch.load(cov_file+"invcov.dat").to(torch.float64)
+            self.invcov = torch.load(cov_file+"invcov.dat", weights_only=True).to(torch.float64)
             self.invcov = self.invcov[0].unsqueeze(0)
             #self.invcov = self.invcov[0,:50, :50].unsqueeze(0)
         else:
@@ -325,7 +330,9 @@ class pk_emulator():
         """basic training loop"""
         total_loss = 0.
         torch.autograd.set_detect_anomaly(True)
+        t = 0
         for (i, batch) in enumerate(train_loader):
+            t1 = time.time()
             #params = train_loader.dataset.get_repeat_params(batch[2], self.num_zbins, self.num_samples)
             params = normalize_cosmo_params(batch[0], self.input_normalizations)
             target = batch[1]
@@ -341,3 +348,6 @@ class pk_emulator():
 
             self.optimizer.step()
             total_loss += loss
+            t+= (time.time() - t1)
+        if self.print_progress: print("time for epoch: {:0.1f}s, time per batch: {:0.1f}ms".format(t, 1000*t / len(train_loader)))
+        return total_loss / len(train_loader)

@@ -196,15 +196,15 @@ def calc_avg_loss(net, data_loader, input_normalizations,
 
     net.eval()
     avg_loss = 0.
-    for (i, batch) in enumerate(data_loader):
-        #params = data_loader.dataset.get_repeat_params(batch[2], data_loader.dataset.num_zbins, data_loader.dataset.num_samples)
-        params = normalize_cosmo_params(batch[0], input_normalizations)
-        prediction = net(params)
-        prediction = un_normalize_power_spectrum(prediction, ps_fid, eigvals, Q, Q_inv)
-        avg_loss += loss_function(prediction, batch[1], invcov).item()
+    with torch.no_grad():
+        for (i, batch) in enumerate(data_loader):
+            #params = data_loader.dataset.get_repeat_params(batch[2], data_loader.dataset.num_zbins, data_loader.dataset.num_samples)
+            params = normalize_cosmo_params(batch[0], input_normalizations)
+            prediction = net(params)
+            prediction = un_normalize_power_spectrum(prediction, ps_fid, eigvals, Q, Q_inv)
+            avg_loss += loss_function(prediction, batch[1], invcov).item()
 
-    avg_loss /= len(data_loader)
-    return avg_loss
+    return avg_loss / len(data_loader)
 
 def normalize_cosmo_params(params, normalizations):
     return (params - normalizations[0]) / (normalizations[1] - normalizations[0])
