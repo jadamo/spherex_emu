@@ -1,20 +1,18 @@
 import torch
 #import torch.nn as nn
-from torch.nn import functional as F
 import numpy as np
-import os
 
-from spherex_emu.utils import normalize_cosmo_params, un_normalize, load_config_file
+from spherex_emu.utils import load_config_file
 
 class pk_galaxy_dataset(torch.utils.data.Dataset):
 
     def __init__(self, data_dir:str, type:str, frac=1.):
         
         self._load_data(data_dir, type, frac)
-        self._set_normalization(data_dir, type)
+        #self._set_normalization(data_dir, type)
         #self.pk = normalize(self.pk, self.output_normalizations)
         #self.pk = self.pk.view(-1, self.num_zbins * self.num_samples, self.num_ells * self.num_kbins)
-        self.pk = self.pk.reshape(-1, self.num_zbins, self.num_samples*self.num_ells*self.num_kbins)
+        self.pk = self.pk.reshape(-1, self.num_spectra, self.num_zbins, self.num_ells*self.num_kbins)
 
     def _load_data(self, data_dir, type, frac):
 
@@ -35,15 +33,15 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self.cosmo_params = header_info["cosmo_params"]
         self.bias_params = header_info["bias_params"]
 
-        self.pk = torch.transpose(self.pk, 3, 4)
+        self.pk = torch.permute(self.pk, (0, 2, 1, 4, 3))
         # This line is temprary!!
-        self.pk = self.pk[:,0,:,:,:].unsqueeze(1)
+        #self.pk = self.pk[:,0,0,:,:].unsqueeze(1).unsqueeze(2)
         #print(self.pk.shape)
 
-        self.num_zbins = self.pk.shape[1]
-        self.num_samples = self.pk.shape[2]
-        self.num_ells = self.pk.shape[4]
+        self.num_spectra = self.pk.shape[1]
+        self.num_zbins = self.pk.shape[2]
         self.num_kbins = self.pk.shape[3]
+        self.num_ells = self.pk.shape[4]
 
         if frac != 1.:
             N_frac = int(self.params.shape[0] * frac)
@@ -51,17 +49,18 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
             self.pk = self.pk[0:N_frac]
 
     def _set_normalization(self, data_dir, type):
-        """finds the min and max values for each multipole and saves to another file"""
-        self.output_normalizations = torch.zeros(2, self.num_zbins, self.num_samples, self.num_ells, 1)
-        if type == "training":
-            for zbin in range(self.num_zbins):
-                for sample in range(self.num_samples):
-                    for ell in range(self.num_ells):
-                        self.output_normalizations[0,zbin,sample,ell] = torch.amin(self.pk[:,zbin, sample, ell, :]).item()
-                        self.output_normalizations[1,zbin,sample,ell] = torch.amax(self.pk[:,zbin, sample, ell, :]).item()
-            torch.save(self.output_normalizations, data_dir+"pk-normalization.dat")
-        elif os.path.exists(data_dir+"pk-normalization.dat"):
-            self.output_normalizations = torch.load(data_dir+"pk-normalization.dat", weights_only=True)
+        raise NotImplementedError
+        # """finds the min and max values for each multipole and saves to another file"""
+        # self.output_normalizations = torch.zeros(2, self.num_zbins, self.num_samples, self.num_ells, 1)
+        # if type == "training":
+        #     for zbin in range(self.num_zbins):
+        #         for sample in range(self.num_samples):
+        #             for ell in range(self.num_ells):
+        #                 self.output_normalizations[0,zbin,sample,ell] = torch.amin(self.pk[:,zbin, sample, ell, :]).item()
+        #                 self.output_normalizations[1,zbin,sample,ell] = torch.amax(self.pk[:,zbin, sample, ell, :]).item()
+        #     torch.save(self.output_normalizations, data_dir+"pk-normalization.dat")
+        # elif os.path.exists(data_dir+"pk-normalization.dat"):
+        #     self.output_normalizations = torch.load(data_dir+"pk-normalization.dat", weights_only=True)
 
     def __len__(self):
         return self.params.shape[0]
@@ -91,8 +90,6 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
     def get_norm_values(self):
         return self.normalizations
 
-    def get_power_spectra(self, idx):
-        
-        pk = self.pk[idx].view(self.num_zbins, self.num_samples, self.num_kbins, self.num_ells)
-        #pk = un_normalize(pk, self.normalizations).detach().numpy()
-        return torch.permute(pk, (0, 1, 3, 2))
+    def get_power_spectra(self, idx):        
+        return self.pk[idx].view(self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
+

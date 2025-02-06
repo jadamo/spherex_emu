@@ -98,44 +98,48 @@ class pk_emulator():
         train_loader = self.load_data("training", self.training_set_fraction)
         valid_loader = self.load_data("validation")
 
-        self.train_loss = []
-        self.valid_loss = []
-        self.effective_lr = []
-        best_loss = torch.inf
-
+        self.train_loss  = [[] for i in range(self.num_spectra * self.num_zbins)]
+        self.valid_loss = [[] for i in range(self.num_spectra * self.num_zbins)]
+        self.effective_lr = [[] for i in range(self.num_spectra * self.num_zbins)]
+        best_loss = [torch.inf for i in range(self.num_spectra * self.num_zbins)]
+        epochs_since_update = [0 for i in range(self.num_spectra * self.num_zbins)]
         if self.print_progress: print("Initial learning rate = {:0.2e}".format(self.learning_rate))
         
         self._set_optimizer()
         self.model.train()
         # loop thru epochs
-        epochs_since_update = 0
         for epoch in range(self.num_epochs):
+            # loop thru individual networks
+            for net_idx in range(self.num_spectra * self.num_zbins):
+                if epochs_since_update[net_idx] > self.early_stopping_epochs:
+                    continue
 
-            training_loss = self._train_one_epoch(train_loader)
-            t1 = time.time()
-            if self.recalculate_train_loss:
-                self.train_loss.append(calc_avg_loss(self.model, train_loader, self.input_normalizations, self.ps_fid, self.invcov, self.sqrt_eigvals, self.Q, self.Q_inv, self.loss_function))
-            else:
-                self.train_loss.append(training_loss)
-            self.valid_loss.append(calc_avg_loss(self.model, valid_loader, self.input_normalizations, self.ps_fid, self.invcov, self.sqrt_eigvals, self.Q, self.Q_inv, self.loss_function))
-            #print("loss stats took {:0.1f}s to calculate".format(time.time() - t1))
-            self.effective_lr.append(self.optimizer.param_groups[0]['lr'])
-            self.scheduler.step(self.valid_loss[-1])
+                training_loss = self._train_one_epoch(train_loader, net_idx, self.optimizer[net_idx])
+                t1 = time.time()
+                if self.recalculate_train_loss:
+                    self.train_loss[net_idx].append(calc_avg_loss(self.model, train_loader, self.input_normalizations, 
+                                                                  self.ps_fid, self.invcov, self.sqrt_eigvals, 
+                                                                  self.Q, self.Q_inv, self.loss_function, net_idx))
+                else:
+                    self.train_loss[net_idx].append(training_loss)
+                self.valid_loss[net_idx].append(calc_avg_loss(self.model, valid_loader, self.input_normalizations, 
+                                                              self.ps_fid, self.invcov, self.sqrt_eigvals, 
+                                                              self.Q, self.Q_inv, self.loss_function, net_idx))
+                #print("loss stats took {:0.1f}s to calculate".format(time.time() - t1))
+                self.effective_lr[net_idx].append(self.optimizer[net_idx].param_groups[0]['lr'])
+                self.scheduler[net_idx].step(self.valid_loss[net_idx][-1])
 
-            if self.valid_loss[-1] < best_loss:
-                best_loss = self.valid_loss[-1]
-                self._save_model()
-                epochs_since_update = 0
-            else:
-                epochs_since_update += 1
+                if self.valid_loss[net_idx][-1] < best_loss[net_idx]:
+                    best_loss[net_idx] = self.valid_loss[net_idx][-1]
+                    self._save_model()
+                    epochs_since_update[net_idx] = 0
+                else:
+                    epochs_since_update[net_idx] += 1
 
-            if self.print_progress: print("Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(epoch, self.train_loss[-1], self.valid_loss[-1], epochs_since_update))
-            if epochs_since_update > self.early_stopping_epochs:
-                print("Model has not impvored for {:0.0f} epochs. Initiating early stopping...".format(epochs_since_update))
-                break
-
-        print("Best validation loss was {:0.4e} after {:0.0f} epochs".format(
-                best_loss, epoch - epochs_since_update))
+                if self.print_progress: print("Net idx : {:d}, Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(
+                    net_idx, epoch, self.train_loss[net_idx][-1], self.valid_loss[net_idx][-1], epochs_since_update[net_idx]))
+                if epochs_since_update[net_idx] > self.early_stopping_epochs:
+                    print("Model {:d} has not impvored for {:0.0f} epochs. Initiating early stopping...".format(net_idx, epochs_since_update[net_idx]))
 
     def get_power_spectra(self, params):
         """Gets the power spectra corresponding to the given input params by passing them though the network"""
@@ -143,13 +147,13 @@ class pk_emulator():
         self.model.eval()
         with torch.no_grad():
             params = self._check_params(params)
+            params = self.model.organize_parameters(params)
             norm_params = normalize_cosmo_params(params, self.input_normalizations)
             #t1 = time.time()
             pk = self.model.forward(norm_params)
             #print(time.time() - t1)
             pk = un_normalize_power_spectrum(pk, self.ps_fid, self.sqrt_eigvals, self.Q, self.Q_inv)
-            pk = pk.view(self.num_zbins, self.num_spectra, self.num_kbins, self.num_ells)
-            pk = torch.permute(pk, (0, 1, 3, 2))
+            pk = pk.view(self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
             pk = pk.to("cpu").detach().numpy()
 
         return pk
@@ -179,18 +183,22 @@ class pk_emulator():
             raise KeyError
                 
     def _init_input_normalizations(self):
-        """Initializes input and normalization factors"""
+        """Initializes input parameter normalization factors
+        
+        Normalizations are in the shape (low / high bound, net_idx, parameter)
+        """
+        # TODO: simplify this code
         try:
             cosmo_dict = load_config_file(self.input_dir+self.cosmo_dir)
             __, bounds = get_parameter_ranges(cosmo_dict)
-            self.input_normalizations = torch.Tensor(bounds.T).to(self.device)
+            input_normalizations = torch.Tensor(bounds.T).to(self.device)
         except IOError:
-            self.input_normalizations = torch.vstack((torch.zeros((self.num_cosmo_params + (self.num_samples*self.num_zbins*self.num_bias_params))),
-                                                      torch.ones((self.num_cosmo_params + (self.num_samples*self.num_zbins*self.num_bias_params))))).to(self.device)
-        # NOTE: Old way of doing output normalizations
-        # self.output_normalizations = torch.cat((torch.zeros((self.num_zbins, self.num_spectra, 2, 1)),
-        #                                         torch.ones((self.num_zbins, self.num_spectra, 2, 1)))).to(self.device)
-        #self.model.set_normalizations(self.output_normalizations)
+            input_normalizations = torch.vstack((torch.zeros((self.num_cosmo_params + (self.num_samples*self.num_zbins*self.num_bias_params))),
+                                                 torch.ones((self.num_cosmo_params + (self.num_samples*self.num_zbins*self.num_bias_params))))).to(self.device)
+        
+        lower_bounds = self.model.organize_parameters(input_normalizations[0].unsqueeze(0))
+        upper_bounds = self.model.organize_parameters(input_normalizations[1].unsqueeze(0))
+        self.input_normalizations = torch.vstack([lower_bounds, upper_bounds])
 
     def _init_fiducial_power_spectrum(self):
         """Loads the fiducial power spectrum for use in normalization"""
@@ -199,11 +207,12 @@ class pk_emulator():
         if os.path.exists(ps_file):
             self.ps_fid = torch.from_numpy(np.load(ps_file)).to(torch.float32).to(self.device)
             if self.ps_fid.shape[3] == self.num_kbins:
-                self.ps_fid = torch.permute(self.ps_fid, (0, 1, 3, 2))
-            self.ps_fid = self.ps_fid[0,:,:,:]
-            self.ps_fid = self.ps_fid.reshape(self.num_zbins, self.num_spectra * self.num_kbins * self.num_ells)
+                self.ps_fid = torch.permute(self.ps_fid, (1, 0, 3, 2))
+            # This line is temporary!
+            self.ps_fid = self.ps_fid[0,0,:,:]
+            self.ps_fid = self.ps_fid.reshape(self.num_spectra, self.num_zbins, self.num_kbins * self.num_ells)
         else:
-            self.ps_fid = torch.zeros((self.num_zbins, self.num_spectra * self.num_ells * self.num_kbins)).to(self.device)
+            self.ps_fid = torch.zeros((self.num_spectra, self.num_zbins, self.num_kbins*self.num_ells)).to(self.device)
 
     def _init_inverse_covariance(self):
         """Loads the inverse data covariance matrix for use in certain loss functions and normalizations"""
@@ -214,28 +223,29 @@ class pk_emulator():
             self.invcov = torch.from_numpy(np.load(cov_file+"invcov.npy"))
         elif os.path.exists(cov_file+"invcov.dat"):
             self.invcov = torch.load(cov_file+"invcov.dat", weights_only=True).to(torch.float64)
-            self.invcov = self.invcov[0].unsqueeze(0)
+            # This line is temporary!
+            self.invcov = self.invcov[:1]
             #self.invcov = self.invcov[0,:50, :50].unsqueeze(0)
         else:
-            self.invcov = torch.eye(self.num_ells*self.num_spectra*self.num_kbins).unsqueeze(0)
-            self.invcov = self.invcov.repeat(self.num_zbins, 1, 1)  
+            self.invcov = torch.eye(self.num_ells*self.num_kbins).unsqueeze(0)
+            self.invcov = self.invcov.repeat(self.num_zbins * self.num_spectra, 1, 1)  
 
     def _diagonalize_covariance(self):
         """performs an eigenvalue decomposition of the inverse covariance matrix
            this function is always performed on cpu in double percision to improve stability"""
         self.Q = torch.zeros_like(self.invcov)
         self.Q_inv = torch.zeros_like(self.invcov)
-        self.sqrt_eigvals = torch.zeros((self.invcov.shape[0], self.invcov.shape[1]), device=self.device)
-        for z in range(self.num_zbins):
-            eig, q = torch.linalg.eigh(self.invcov[z])
+        self.sqrt_eigvals = torch.zeros((self.invcov.shape[0], self.invcov.shape[1]))
+        for idx in range(self.num_zbins*self.num_spectra):
+            eig, q = torch.linalg.eigh(self.invcov[idx])
 
             assert torch.all(torch.isnan(q)) == False
             assert torch.all(eig > 0), "ERROR! inverse covariance matrix has negative eigenvalues? Is it positive definite?"
             
-            self.Q[z] = q.real
-            self.Q_inv[z] = torch.linalg.inv(q).real
+            self.Q[idx] = q.real
+            self.Q_inv[idx] = torch.linalg.inv(q).real
             # store the sqrt of the eigenvalues to reduce # of floating point operations
-            self.sqrt_eigvals[z] = torch.sqrt(eig.real)
+            self.sqrt_eigvals[idx] = torch.sqrt(eig.real)
 
         # move data to gpu and convert to single percision
         self.invcov = self.invcov.to(torch.float32).to(self.device)
@@ -278,23 +288,27 @@ class pk_emulator():
             m.initialize_params(self.weight_initialization)
 
     def _set_optimizer(self):
-        if self.optimizer_type == "Adam":
-            self.optimizer = torch.optim.Adam(self.model.parameters(), 
-                                              lr=self.learning_rate)
-        else:
-            print("Error! Invalid optimizer type specified!")
+        self.optimizer = []
+        self.scheduler = []
+        for idx in range(self.num_zbins * self.num_spectra):
+            if self.optimizer_type == "Adam":
+                self.optimizer.append(torch.optim.Adam(self.model.networks[idx].parameters(), 
+                                                       lr=self.learning_rate))
+            else:
+                print("Error! Invalid optimizer type specified!")
 
-        # use an adaptive learning rate
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer,
-                                "min", factor=0.1, patience=15)
+            # use an adaptive learning rate
+            self.scheduler.append(torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer[idx],
+                                  "min", factor=0.1, patience=15))
 
     def _save_model(self):
         """saves the current model state and normalization information to file"""
         # training data
-        training_data = torch.vstack([torch.Tensor(self.train_loss), 
-                                      torch.Tensor(self.valid_loss),
-                                      torch.Tensor(self.effective_lr)])
-        torch.save(training_data, self.input_dir+self.save_dir+"train_data.dat")
+        for net_idx in range(self.num_zbins * self.num_samples):
+            training_data = torch.vstack([torch.Tensor(self.train_loss[net_idx]), 
+                                        torch.Tensor(self.valid_loss[net_idx]),
+                                        torch.Tensor(self.effective_lr[net_idx])])
+            torch.save(training_data, self.input_dir+self.save_dir+"train_data_"+str(net_idx)+".dat")
         
         # configuration data
         with open(self.input_dir+self.save_dir+'config.yaml', 'w') as outfile:
@@ -320,33 +334,41 @@ class pk_emulator():
         # [cosmo_params, bias_params for each sample / zbin grouped together]
         # assert params.shape[0] == self.num_cosmo_params + (self.num_bias_params * self.num_zbins * self.num_samples)
         
-        if torch.any(params < self.input_normalizations[0]) or \
-           torch.any(params > self.input_normalizations[1]):
-            print("WARNING: input parameters out of bounds! Emulator output will be untrustworthy:", params)
+        # if torch.any(params < self.input_normalizations[0]) or \
+        #    torch.any(params > self.input_normalizations[1]):
+        #     print("WARNING: input parameters out of bounds! Emulator output will be untrustworthy:", params)
 
         return params.unsqueeze(0)
 
-    def _train_one_epoch(self, train_loader):
+    def _train_one_epoch(self, train_loader, net_idx, optimizer):
         """basic training loop"""
         total_loss = 0.
         t = 0
         for (i, batch) in enumerate(train_loader):
             t1 = time.time()
             #params = train_loader.dataset.get_repeat_params(batch[2], self.num_zbins, self.num_samples)
-            params = normalize_cosmo_params(batch[0], self.input_normalizations)
-            target = batch[1]
+            params = self.model.organize_parameters(batch[0])
+            params = normalize_cosmo_params(params, self.input_normalizations)
+            # This line is temporary!
+            target = batch[1][:,0,0].unsqueeze(1)
 
-            prediction = self.model.forward(params)
-            prediction = un_normalize_power_spectrum(prediction, self.ps_fid, self.sqrt_eigvals, self.Q, self.Q_inv)
-
-            loss = self.loss_function(prediction, target, self.invcov)
+            prediction = self.model.forward(params, net_idx)
+            prediction = un_normalize_power_spectrum(prediction, self.ps_fid, 
+                                                     self.sqrt_eigvals, 
+                                                     self.Q, self.Q_inv,
+                                                     net_idx)
+            
+            # print(prediction.shape, target.shape, self.invcov.shape)
+            loss = self.loss_function(prediction, target, self.invcov, net_idx)
             assert torch.isnan(loss) == False
             assert torch.isinf(loss) == False
-            self.optimizer.zero_grad(set_to_none=True)
+            optimizer.zero_grad(set_to_none=True)
             loss.backward()
 
-            self.optimizer.step()
+            optimizer.step()
             total_loss += loss.detach()
             t+= (time.time() - t1)
+
+        # Uncomment if you want to see how long each epoch is taking
         if self.print_progress: print("time for epoch: {:0.1f}s, time per batch: {:0.1f}ms".format(t, 1000*t / len(train_loader)))
         return (total_loss / len(train_loader))
