@@ -192,8 +192,8 @@ def delta_chi_squared(predict, target, invcov, net_idx=None):
             chi2 += torch.matmul(delta[:,i].unsqueeze(1), 
                     torch.matmul(invcov[i], delta[:,i].unsqueeze(2)))
     else:
-        chi2 = torch.matmul(delta[:,net_idx].unsqueeze(1), 
-                            torch.matmul(invcov[net_idx], delta[:,net_idx].unsqueeze(2)))
+        chi2 = torch.matmul(delta[:,0].unsqueeze(1), 
+                            torch.matmul(invcov[net_idx], delta[:,0].unsqueeze(2)))
     # print(predict.shape, target.shape)
     # delta = predict - target
     # print(delta.shape)
@@ -217,19 +217,28 @@ def calc_avg_loss(net, data_loader, input_normalizations,
                   ps_fid, invcov, sqrt_eigvals, Q, Q_inv, loss_function, net_idx=None):
     """run thru the given data set and returns the average loss value"""
 
+    # if net_idx not specified, recursively call the function with all possible values
+    if net_idx == None:
+        total_loss = torch.zeros(ps_fid.shape[0]*ps_fid.shape[1], requires_grad=False)
+        for idx in range(len(total_loss)):
+            total_loss[idx] = calc_avg_loss(net, data_loader, input_normalizations, 
+                              ps_fid, invcov, sqrt_eigvals, Q, Q_inv, loss_function, idx)
+        return total_loss
+    
     net.eval()
     avg_loss = 0.
+    #z_idx = int(net_idx / ps_fid.shape[1])
+    z_idx = int(net_idx / ps_fid.shape[0])
+    ps_idx = int(net_idx % ps_fid.shape[0])
     with torch.no_grad():
         for (i, batch) in enumerate(data_loader):
             #params = data_loader.dataset.get_repeat_params(batch[2], data_loader.dataset.num_zbins, data_loader.dataset.num_samples)
             params = net.organize_parameters(batch[0])
             params = normalize_cosmo_params(params, input_normalizations)
             prediction = net(params, net_idx)
-            target = batch[1][:,0,0].unsqueeze(1)
-            prediction = un_normalize_power_spectrum(prediction, ps_fid[:,net_idx], 
-                                                     sqrt_eigvals[net_idx].unsqueeze(0), 
-                                                     Q[net_idx].unsqueeze(0), 
-                                                     Q_inv[net_idx].unsqueeze(0))
+            target = batch[1][:,ps_idx,z_idx].unsqueeze(1)
+            prediction = un_normalize_power_spectrum(prediction, ps_fid, 
+                                                     sqrt_eigvals, Q, Q_inv, net_idx)
             #prediction = un_normalize_power_spectrum(prediction, ps_fid, eigvals, Q, Q_inv)
             avg_loss += loss_function(prediction, target, invcov, net_idx).item()
 

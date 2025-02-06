@@ -209,7 +209,7 @@ class pk_emulator():
             if self.ps_fid.shape[3] == self.num_kbins:
                 self.ps_fid = torch.permute(self.ps_fid, (1, 0, 3, 2))
             # This line is temporary!
-            self.ps_fid = self.ps_fid[0,0,:,:]
+            self.ps_fid = self.ps_fid[:,0,:,:]
             self.ps_fid = self.ps_fid.reshape(self.num_spectra, self.num_zbins, self.num_kbins * self.num_ells)
         else:
             self.ps_fid = torch.zeros((self.num_spectra, self.num_zbins, self.num_kbins*self.num_ells)).to(self.device)
@@ -224,7 +224,7 @@ class pk_emulator():
         elif os.path.exists(cov_file+"invcov.dat"):
             self.invcov = torch.load(cov_file+"invcov.dat", weights_only=True).to(torch.float64)
             # This line is temporary!
-            self.invcov = self.invcov[:1]
+            self.invcov = self.invcov[:3]
             #self.invcov = self.invcov[0,:50, :50].unsqueeze(0)
         else:
             self.invcov = torch.eye(self.num_ells*self.num_kbins).unsqueeze(0)
@@ -304,7 +304,7 @@ class pk_emulator():
     def _save_model(self):
         """saves the current model state and normalization information to file"""
         # training data
-        for net_idx in range(self.num_zbins * self.num_samples):
+        for net_idx in range(self.num_zbins * self.num_spectra):
             training_data = torch.vstack([torch.Tensor(self.train_loss[net_idx]), 
                                         torch.Tensor(self.valid_loss[net_idx]),
                                         torch.Tensor(self.effective_lr[net_idx])])
@@ -344,13 +344,15 @@ class pk_emulator():
         """basic training loop"""
         total_loss = 0.
         t = 0
+        z_idx = int(net_idx / self.num_spectra)
+        ps_idx = int(net_idx % self.num_spectra)
         for (i, batch) in enumerate(train_loader):
             t1 = time.time()
             #params = train_loader.dataset.get_repeat_params(batch[2], self.num_zbins, self.num_samples)
             params = self.model.organize_parameters(batch[0])
             params = normalize_cosmo_params(params, self.input_normalizations)
             # This line is temporary!
-            target = batch[1][:,0,0].unsqueeze(1)
+            target = batch[1][:,ps_idx,z_idx].unsqueeze(1)
 
             prediction = self.model.forward(params, net_idx)
             prediction = un_normalize_power_spectrum(prediction, self.ps_fid, 
