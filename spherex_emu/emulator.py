@@ -56,10 +56,12 @@ class pk_emulator():
 
         self.ps_fid = torch.load(path+"ps_fid.dat", map_location=self.device)
         self.invcov = torch.load(path+"invcov.dat", map_location=self.device)
-        self.sqrt_eigvals = torch.load(path+"eigenvals.dat", map_location=self.device)
+        self.sqrt_eigvals = torch.load(path+"sqrt_eigenvals.dat", map_location=self.device)
         self.Q = torch.load(path+"eigenvectors.dat", map_location=self.device)
-        for z in range(self.num_zbins):
-            self.Q_inv[z] = torch.linalg.inv(self.Q[z].to(torch.float64)).to(torch.float32)
+        self.Q_inv = torch.zeros_like(self.Q, device="cpu")
+        for net_idx in range(self.num_zbins*self.num_spectra):
+            self.Q_inv[net_idx] = torch.linalg.inv(self.Q[net_idx].to("cpu").to(torch.float64)).to(torch.float32)
+        self.Q_inv.to(self.device)
         #self.output_normalizations = torch.load(path+"output_normalization.dat", map_location=self.device)
 
     def load_data(self, key: str, data_frac = 1.0, return_dataloader=True, data_dir=""):
@@ -147,10 +149,8 @@ class pk_emulator():
         self.model.eval()
         with torch.no_grad():
             params = self._check_params(params)
-            params = self.model.organize_parameters(params)
-            norm_params = normalize_cosmo_params(params, self.input_normalizations)
             #t1 = time.time()
-            pk = self.model.forward(norm_params)
+            pk = self.model.forward(params)
             #print(time.time() - t1)
             pk = un_normalize_power_spectrum(pk, self.ps_fid, self.sqrt_eigvals, self.Q, self.Q_inv)
             pk = pk.view(self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
@@ -208,11 +208,9 @@ class pk_emulator():
             self.ps_fid = torch.from_numpy(np.load(ps_file)).to(torch.float32).to(self.device)
             if self.ps_fid.shape[3] == self.num_kbins:
                 self.ps_fid = torch.permute(self.ps_fid, (1, 0, 3, 2))
-            # This line is temporary!
-            self.ps_fid = self.ps_fid[:,0,:,:]
-            self.ps_fid = self.ps_fid.reshape(self.num_spectra, self.num_zbins, self.num_kbins * self.num_ells)
+            self.ps_fid = self.ps_fid.reshape(self.num_spectra * self.num_zbins, self.num_kbins * self.num_ells)
         else:
-            self.ps_fid = torch.zeros((self.num_spectra, self.num_zbins, self.num_kbins*self.num_ells)).to(self.device)
+            self.ps_fid = torch.zeros((self.num_spectra * self.num_zbins, self.num_kbins * self.num_ells)).to(self.device)
 
     def _init_inverse_covariance(self):
         """Loads the inverse data covariance matrix for use in certain loss functions and normalizations"""
@@ -223,9 +221,6 @@ class pk_emulator():
             self.invcov = torch.from_numpy(np.load(cov_file+"invcov.npy"))
         elif os.path.exists(cov_file+"invcov.dat"):
             self.invcov = torch.load(cov_file+"invcov.dat", weights_only=True).to(torch.float64)
-            # This line is temporary!
-            self.invcov = self.invcov[:3]
-            #self.invcov = self.invcov[0,:50, :50].unsqueeze(0)
         else:
             self.invcov = torch.eye(self.num_ells*self.num_kbins).unsqueeze(0)
             self.invcov = self.invcov.repeat(self.num_zbins * self.num_spectra, 1, 1)  
@@ -306,8 +301,8 @@ class pk_emulator():
         # training data
         for net_idx in range(self.num_zbins * self.num_spectra):
             training_data = torch.vstack([torch.Tensor(self.train_loss[net_idx]), 
-                                        torch.Tensor(self.valid_loss[net_idx]),
-                                        torch.Tensor(self.effective_lr[net_idx])])
+                                          torch.Tensor(self.valid_loss[net_idx]),
+                                          torch.Tensor(self.effective_lr[net_idx])])
             torch.save(training_data, self.input_dir+self.save_dir+"train_data_"+str(net_idx)+".dat")
         
         # configuration data
@@ -319,9 +314,9 @@ class pk_emulator():
 
         torch.save(self.ps_fid, self.input_dir+self.save_dir+"ps_fid.dat")
         torch.save(self.invcov, self.input_dir+self.save_dir+"invcov.dat")
-        torch.save(self.sqrt_eigvals, self.input_dir+self.save_dir+"eigenvals.dat")
+        torch.save(self.sqrt_eigvals, self.input_dir+self.save_dir+"sqrt_eigenvals.dat")
         torch.save(self.Q, self.input_dir+self.save_dir+"eigenvectors.dat")
-        #torch.save(self.output_normalizations, base_dir+self.save_dir+"output_normalization.dat")
+
         torch.save(self.model.state_dict(), self.input_dir+self.save_dir+'network.params')
 
     def _check_params(self, params):
@@ -330,30 +325,30 @@ class pk_emulator():
         if isinstance(params, torch.Tensor): params = params.to(self.device)
         else: params = torch.from_numpy(params).to(torch.float32).to(self.device)
 
+        params = self.model.organize_parameters(params.unsqueeze(0))
         # for now, assume that params should be 1D and in the form
         # [cosmo_params, bias_params for each sample / zbin grouped together]
         # assert params.shape[0] == self.num_cosmo_params + (self.num_bias_params * self.num_zbins * self.num_samples)
+        if torch.any(params < self.input_normalizations[0]) or \
+           torch.any(params > self.input_normalizations[1]):
+            print("WARNING: input parameters out of bounds! Emulator output will be untrustworthy:", params)
         
-        # if torch.any(params < self.input_normalizations[0]) or \
-        #    torch.any(params > self.input_normalizations[1]):
-        #     print("WARNING: input parameters out of bounds! Emulator output will be untrustworthy:", params)
-
-        return params.unsqueeze(0)
+        norm_params = normalize_cosmo_params(params, self.input_normalizations)
+        return norm_params
 
     def _train_one_epoch(self, train_loader, net_idx, optimizer):
         """basic training loop"""
         total_loss = 0.
-        t = 0
+        total_time = 0
         z_idx = int(net_idx / self.num_spectra)
         ps_idx = int(net_idx % self.num_spectra)
         for (i, batch) in enumerate(train_loader):
             t1 = time.time()
-            #params = train_loader.dataset.get_repeat_params(batch[2], self.num_zbins, self.num_samples)
+            
             params = self.model.organize_parameters(batch[0])
             params = normalize_cosmo_params(params, self.input_normalizations)
-            # This line is temporary!
+            
             target = batch[1][:,ps_idx,z_idx].unsqueeze(1)
-
             prediction = self.model.forward(params, net_idx)
             prediction = un_normalize_power_spectrum(prediction, self.ps_fid, 
                                                      self.sqrt_eigvals, 
@@ -369,8 +364,8 @@ class pk_emulator():
 
             optimizer.step()
             total_loss += loss.detach()
-            t+= (time.time() - t1)
+            total_time+= (time.time() - t1)
 
         # Uncomment if you want to see how long each epoch is taking
-        if self.print_progress: print("time for epoch: {:0.1f}s, time per batch: {:0.1f}ms".format(t, 1000*t / len(train_loader)))
+        # if self.print_progress: print("time for epoch: {:0.1f}s, time per batch: {:0.1f}ms".format(total_time, 1000*total_time / len(train_loader)))
         return (total_loss / len(train_loader))

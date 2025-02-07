@@ -177,14 +177,20 @@ def hyperbolic_chi2_loss(predict, target, invcov, net_idx=None):
 
 def delta_chi_squared(predict, target, invcov, net_idx=None):
 
+    if not isinstance(predict, torch.Tensor):
+        predict = torch.from_numpy(predict)
+    if not isinstance(target, torch.Tensor):
+        target = torch.from_numpy(target)
+
     # inputs are size [b, nz*nps, nl*nk]
     # OR [nps, nz, nk, nl] (same as cosmo_inference)
-    assert predict.shape == target.shape
+    assert predict.shape == target.shape, \
+        "ERROR! preidciton and target shape mismatch: "+ str(predict.shape) +", "+ str(target.shape)
     delta = predict - target
 
     if len(delta.shape) == 4:
         (nz, nps, nk, nl) = delta.shape
-        delta = delta.view(1, nps*nz, nk*nl)
+        delta = delta.reshape((1, nps*nz, nk*nl))
 
     chi2 = 0
     if net_idx == None:
@@ -219,7 +225,7 @@ def calc_avg_loss(net, data_loader, input_normalizations,
 
     # if net_idx not specified, recursively call the function with all possible values
     if net_idx == None:
-        total_loss = torch.zeros(ps_fid.shape[0]*ps_fid.shape[1], requires_grad=False)
+        total_loss = torch.zeros(ps_fid.shape[0], requires_grad=False)
         for idx in range(len(total_loss)):
             total_loss[idx] = calc_avg_loss(net, data_loader, input_normalizations, 
                               ps_fid, invcov, sqrt_eigvals, Q, Q_inv, loss_function, idx)
@@ -228,8 +234,8 @@ def calc_avg_loss(net, data_loader, input_normalizations,
     net.eval()
     avg_loss = 0.
     #z_idx = int(net_idx / ps_fid.shape[1])
-    z_idx = int(net_idx / ps_fid.shape[0])
-    ps_idx = int(net_idx % ps_fid.shape[0])
+    z_idx = int(net_idx / data_loader.dataset.num_spectra)
+    ps_idx = int(net_idx % data_loader.dataset.num_spectra)
     with torch.no_grad():
         for (i, batch) in enumerate(data_loader):
             #params = data_loader.dataset.get_repeat_params(batch[2], data_loader.dataset.num_zbins, data_loader.dataset.num_samples)
@@ -284,23 +290,27 @@ def un_normalize_power_spectrum(ps, ps_fid, sqrt_eigvals, Q, Q_inv, net_idx=None
     Reverses normalization of a batch of output power spectru based on the method developed by Evan.
 
     Args:
-        ps: power spectrum to reverse normalization. Expected shape is [nb, nz, ns*nk*nl]
-        ps_fid: fiducial power spectrum used to reverse normalization. Expected shape is [nz, ns*nk*nl]
-        sqrt_eigvals: square root eigenvalues of the inverse covariance matrix
-        Q: eigenvectors of the inverse covariance matrix
-        Q_inv: inverse eigenvectors of the inverse covariance matrix
+        ps: power spectrum to reverse normalization. Expected shape is either [nb, nps, nz, nk*nl] or [nb, 1, nk*nl]  
+        ps_fid: fiducial power spectrum used to reverse normalization. Expected shape is [nps*nz, nk*nl]  
+        sqrt_eigvals: square root eigenvalues of the inverse covariance matrix. Expected shape is [nps*nz, nk*nl]  
+        Q: eigenvectors of the inverse covariance matrix. Expected shape is [nps*nz, nk*nl, nk*nl]  
+        Q_inv: inverse eigenvectors of the inverse covariance matrix. Expected shape is [nps*nz, nk*nl, nk*nl]  
+        net_idx: (optional) index specifying the specific sub-network output to reverse normalization. Default None. If not specified, will reverse normalization for the entire emulator output
     Returns:
         ps_new: galaxy power spectrum in units of (Mpc/h)^3 in the same shape as ps
     """
-    #print(ps.shape, ps_fid.shape, sqrt_eigvals.shape)
-    ps_new = torch.zeros_like(ps)
-    for idx in range(ps_new.shape[1]):
-        ps_new[:,idx] = (ps[:,idx] / sqrt_eigvals[idx] + (ps_fid[idx].flatten() @ Q[idx])) @ Q_inv[idx]
-    
-    return ps_new
 
-# TODO: Remove or rename function
-def un_normalize(X, normalizations):
-    min_v = normalizations[0]
-    max_v = normalizations[1]
-    return (X * (max_v - min_v)) + min_v
+    if net_idx == None:
+        # assumes shape is [b, nps, nz, nk*nl]
+        assert len(ps.shape) == 4
+        ps_new = torch.zeros_like(ps)
+        for z in range(ps.shape[2]):
+                for nps in range(ps.shape[1]):
+                    idx = (z * ps.shape[1]) + nps
+                    ps_new[:, nps, z] = (ps[:,nps, z] / sqrt_eigvals[idx] + (ps_fid[idx] @ Q[idx])) @ Q_inv[idx]
+    else:
+        # assumes shape is [b, 1, nk*nl]
+        ps_new = (ps[:,0] / sqrt_eigvals[net_idx] + (ps_fid[net_idx] @ Q[net_idx])) @ Q_inv[net_idx]
+        ps_new = ps_new.unsqueeze(1)
+        
+    return ps_new

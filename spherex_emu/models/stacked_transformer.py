@@ -134,14 +134,14 @@ class stacked_transformer(nn.Module):
 
         # feed parameters through all sub-networks
         if net_idx == None:
-            X = torch.zeros((input_params.shape[0], self.num_zbins, self.num_spectra, self.num_ells*self.num_kbins), 
-                            device=input_params.device)
+            X = torch.zeros((input_params.shape[0], self.num_spectra, self.num_zbins, self.num_ells*self.num_kbins), 
+                             device=input_params.device)
             for z in range(self.num_zbins):
-                for nps in range(self.num_spectra):
-                    idx = (z * self.num_spectra) + nps
-                    X[:, z, nps] = self.networks[idx](input_params[:,idx])
+                for ps in range(self.num_spectra):
+                    idx = (z * self.num_spectra) + ps
+                    X[:, ps, z] = self.networks[idx](input_params[:,idx])
 
-            X = X.reshape(-1, self.num_zbins*self.num_spectra, self.num_kbins * self.num_ells)
+            #X = X.reshape(-1, self.num_spectra*self.num_zbins, self.num_kbins * self.num_ells)
     
         # feed parameters through an individual sub-network (used in training)
         else:
