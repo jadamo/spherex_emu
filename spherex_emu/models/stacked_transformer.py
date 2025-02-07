@@ -97,7 +97,7 @@ class stacked_transformer(nn.Module):
     def organize_parameters(self, input_params):
         # (b, nz*nps, num_cosmo*2*num_bias)
         organized_params = torch.zeros((input_params.shape[0],
-                                       self.num_zbins * self.num_spectra, 
+                                       self.num_spectra * self.num_zbins, 
                                        self.num_cosmo_params + (2*self.num_bias_params)),
                                        device=input_params.device)
         #for idx in range(organized_parms.shape[1]):
@@ -113,7 +113,7 @@ class stacked_transformer(nn.Module):
                 idx_1 = (z*self.num_samples) + isample1
                 idx_2 = (z*self.num_samples) + isample2
                 iterate = self.num_samples*self.num_zbins
-                iterate = 4
+
                 organized_params[:, iter, self.num_cosmo_params:self.num_cosmo_params+self.num_bias_params] \
                     = input_params[:, self.num_cosmo_params+idx_1::iterate]
                 organized_params[:, iter, self.num_cosmo_params+self.num_bias_params:self.num_cosmo_params+2*self.num_bias_params] \
@@ -136,17 +136,15 @@ class stacked_transformer(nn.Module):
         if net_idx == None:
             X = torch.zeros((input_params.shape[0], self.num_spectra, self.num_zbins, self.num_ells*self.num_kbins), 
                              device=input_params.device)
-            for z in range(self.num_zbins):
-                for ps in range(self.num_spectra):
-                    idx = (z * self.num_spectra) + ps
-                    X[:, ps, z] = self.networks[idx](input_params[:,idx])
-
-            #X = X.reshape(-1, self.num_spectra*self.num_zbins, self.num_kbins * self.num_ells)
+            
+            for (z, ps) in itertools.product(range(self.num_zbins), range(self.num_spectra)):
+                idx = (z * self.num_spectra) + ps
+                X[:, ps, z] = self.networks[idx](input_params[:,idx])
     
         # feed parameters through an individual sub-network (used in training)
         else:
             X = self.networks[net_idx](input_params[:,net_idx])
-            X = X.reshape(-1, 1, 1*self.num_kbins * self.num_ells)
+            #X = X.reshape(-1, 1, 1, self.num_kbins * self.num_ells)
 
         return X
         

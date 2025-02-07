@@ -3,6 +3,7 @@ from scipy.stats import qmc
 from scipy.special import hyp2f1
 from torch.nn import functional as F
 import numpy as np
+import itertools
 import torch
 
 def load_config_file(config_file:str):
@@ -165,88 +166,75 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
                 params=all_params[valid_end:test_end], 
                 pk=all_pk[valid_end:test_end])    
 
-def mse_loss(predict, target, invcov=None, net_idx=None):
+def mse_loss(predict, target, invcov=None, bin_idx=None):
     return F.mse_loss(predict, target, reduction="sum")
 
-def hyperbolic_loss(predict, target, invcov=None, net_idx=None):
+def hyperbolic_loss(predict, target, invcov=None, bin_idx=None):
     return torch.mean(torch.sqrt(1 + 2*(predict - target)**2)) - 1
 
-def hyperbolic_chi2_loss(predict, target, invcov, net_idx=None):
-    chi2 = delta_chi_squared(predict, target, invcov, net_idx)
+def hyperbolic_chi2_loss(predict, target, invcov, bin_idx=None):
+    chi2 = delta_chi_squared(predict, target, invcov, bin_idx)
     return torch.mean(torch.sqrt(1 + 2*chi2)) - 1
 
-def delta_chi_squared(predict, target, invcov, net_idx=None):
+def delta_chi_squared(predict, target, invcov, bin_idx=None):
 
     if not isinstance(predict, torch.Tensor):
-        predict = torch.from_numpy(predict)
+        predict = torch.from_numpy(predict).to(torch.float32)
     if not isinstance(target, torch.Tensor):
-        target = torch.from_numpy(target)
+        target = torch.from_numpy(target).to(torch.float32)
 
-    # inputs are size [b, nz*nps, nl*nk]
+    # inputs are size [b, 1, nl*nk]
     # OR [nps, nz, nk, nl] (same as cosmo_inference)
     assert predict.shape == target.shape, \
         "ERROR! preidciton and target shape mismatch: "+ str(predict.shape) +", "+ str(target.shape)
     delta = predict - target
 
-    if len(delta.shape) == 4:
-        (nz, nps, nk, nl) = delta.shape
-        delta = delta.reshape((1, nps*nz, nk*nl))
-
     chi2 = 0
-    if net_idx == None:
-        for i in range(predict.shape[1]):
-            chi2 += torch.matmul(delta[:,i].unsqueeze(1), 
-                    torch.matmul(invcov[i], delta[:,i].unsqueeze(2)))
+    if bin_idx == None:
+        assert len(delta.shape) == 4
+        (nps, nz, nk, nl) = delta.shape
+        for z in range(nz):
+            chi2 += torch.matmul(delta[:,z].flatten(), 
+                    torch.matmul(invcov[z], 
+                    delta[:,z].flatten()))
     else:
-        chi2 = torch.matmul(delta[:,0].unsqueeze(1), 
-                            torch.matmul(invcov[net_idx], delta[:,0].unsqueeze(2)))
-    # print(predict.shape, target.shape)
-    # delta = predict - target
-    # print(delta.shape)
-    # if len(delta.shape) == 2:
-    #     delta = delta.unsqueeze(1)
-    # elif len(delta.shape) == 5:
-    #     delta = torch.transpose(predict - target, 3, 4) # (b,nz,nps,nl,nk) -> (b, nz, nps, nk, nl)
-    #     (_, nz, nps, nk, nl) = delta.shape
-    #     delta = delta.reshape((-1, nz, nps*nk*nl)) # (nz, nps, nk, nl) --> (nz, nps*nk*nl) 
-    # # From here, delta is in the shape [b, nz, nps*nk*nl]
-    # delta_row = delta[:, :, None, :,] # (b, nz, 1, nps*nk*nl) 
-    # delta_col = delta[:, :, :, None,] # (b, nz, nps*nk*nl, 1) 
+        assert len(delta.shape) == 2
+        ps_idx = bin_idx[0]
+        z_idx = bin_idx[1]
 
-    # print(delta_row.shape, delta_col.shape)
-    # # NOTE Matrix multiplication is for the last two indices; element wise for all other indices.
-    # chi2_component = torch.matmul(delta_row, torch.matmul(invcov, delta_col))[..., 0, 0] # invcov is (nz, nps*nk*nl, nps*nk*nl)
+        chi2 = torch.matmul(delta.unsqueeze(1), 
+                            torch.matmul(invcov[ps_idx][z_idx], 
+                            delta.unsqueeze(2)))
+
     chi2 = torch.sum(chi2)
     return chi2
 
 def calc_avg_loss(net, data_loader, input_normalizations, 
-                  ps_fid, invcov, sqrt_eigvals, Q, Q_inv, loss_function, net_idx=None):
+                  ps_fid, invcov, sqrt_eigvals, Q, Q_inv, loss_function, bin_idx=None):
     """run thru the given data set and returns the average loss value"""
 
     # if net_idx not specified, recursively call the function with all possible values
-    if net_idx == None:
-        total_loss = torch.zeros(ps_fid.shape[0], requires_grad=False)
-        for idx in range(len(total_loss)):
-            total_loss[idx] = calc_avg_loss(net, data_loader, input_normalizations, 
-                              ps_fid, invcov, sqrt_eigvals, Q, Q_inv, loss_function, idx)
+    if bin_idx == None:
+        total_loss = torch.zeros(invcov.shape[0], invcov.shape[1], requires_grad=False)
+        for (ps, z) in itertools.product(range(invcov.shape[0]), range(invcov.shape[1])):
+            total_loss[ps, z] = calc_avg_loss(net, data_loader, input_normalizations, 
+                                ps_fid, invcov, sqrt_eigvals, Q, Q_inv, loss_function, [ps, z])
         return total_loss
     
     net.eval()
     avg_loss = 0.
-    #z_idx = int(net_idx / ps_fid.shape[1])
-    z_idx = int(net_idx / data_loader.dataset.num_spectra)
-    ps_idx = int(net_idx % data_loader.dataset.num_spectra)
+    net_idx = (bin_idx[1] * invcov.shape[0]) + bin_idx[0]
     with torch.no_grad():
         for (i, batch) in enumerate(data_loader):
             #params = data_loader.dataset.get_repeat_params(batch[2], data_loader.dataset.num_zbins, data_loader.dataset.num_samples)
             params = net.organize_parameters(batch[0])
             params = normalize_cosmo_params(params, input_normalizations)
             prediction = net(params, net_idx)
-            target = batch[1][:,ps_idx,z_idx].unsqueeze(1)
+            target = batch[1][:,bin_idx[0],bin_idx[1]]
             prediction = un_normalize_power_spectrum(prediction, ps_fid, 
-                                                     sqrt_eigvals, Q, Q_inv, net_idx)
+                                                     sqrt_eigvals, Q, Q_inv, bin_idx)
             #prediction = un_normalize_power_spectrum(prediction, ps_fid, eigvals, Q, Q_inv)
-            avg_loss += loss_function(prediction, target, invcov, net_idx).item()
+            avg_loss += loss_function(prediction, target, invcov, bin_idx).item()
 
     return avg_loss / len(data_loader)
 
@@ -268,9 +256,9 @@ def normalize_power_spectrum(ps, ps_fid, sqrt_eigvals, Q):
 
 def un_normalize_power_spectrum_diagonal(ps, ps_fid, inv_cov):
     """
-    Reverses normalization of a batch of output power spectru based on the method developed by Evan,
+    Reverses normalization of a batch of output power spectru based on the method developed by arXiv:2402.17716,
     assuming a totally diagonal covariance matrix
-    NOTE: This funciton is in the process of being tested / deprecated!
+    NOTE: This funciton has not been tested in a long time!
     
     Args:
         ps: power spectrum to reverse normalization. Expected shape is [nb, nz, ns*nk*nl]
@@ -285,32 +273,31 @@ def un_normalize_power_spectrum_diagonal(ps, ps_fid, inv_cov):
              
     return ps_new
 
-def un_normalize_power_spectrum(ps, ps_fid, sqrt_eigvals, Q, Q_inv, net_idx=None):
+def un_normalize_power_spectrum(ps_raw, ps_fid, sqrt_eigvals, Q, Q_inv, bin_idx:list=None):
     """
-    Reverses normalization of a batch of output power spectru based on the method developed by Evan.
+    Reverses normalization of a batch of output power spectru based on the method developed by arXiv:2402.17716.
 
     Args:
-        ps: power spectrum to reverse normalization. Expected shape is either [nb, nps, nz, nk*nl] or [nb, 1, nk*nl]  
+        ps: () power spectrum to reverse normalization. Expected shape is either [nb, nps, nz, nk*nl] or [nb, 1, nk*nl]  
         ps_fid: fiducial power spectrum used to reverse normalization. Expected shape is [nps*nz, nk*nl]  
         sqrt_eigvals: square root eigenvalues of the inverse covariance matrix. Expected shape is [nps*nz, nk*nl]  
         Q: eigenvectors of the inverse covariance matrix. Expected shape is [nps*nz, nk*nl, nk*nl]  
         Q_inv: inverse eigenvectors of the inverse covariance matrix. Expected shape is [nps*nz, nk*nl, nk*nl]  
         net_idx: (optional) index specifying the specific sub-network output to reverse normalization. Default None. If not specified, will reverse normalization for the entire emulator output
     Returns:
-        ps_new: galaxy power spectrum in units of (Mpc/h)^3 in the same shape as ps
+        ps_new: galaxy power spectrum multipoles in units of (Mpc/h)^3 in the same shape as ps
     """
-
-    if net_idx == None:
+    if bin_idx == None:
         # assumes shape is [b, nps, nz, nk*nl]
-        assert len(ps.shape) == 4
-        ps_new = torch.zeros_like(ps)
-        for z in range(ps.shape[2]):
-                for nps in range(ps.shape[1]):
-                    idx = (z * ps.shape[1]) + nps
-                    ps_new[:, nps, z] = (ps[:,nps, z] / sqrt_eigvals[idx] + (ps_fid[idx] @ Q[idx])) @ Q_inv[idx]
+        assert len(ps_raw.shape) == 4
+        ps_new = torch.zeros_like(ps_raw)
+        for (ps, z) in itertools.product(range(ps_raw.shape[1]), range(ps_raw.shape[2])):
+            #idx = (z * ps.shape[1]) + ps
+            ps_new[:, ps, z] = (ps_raw[:,ps, z] / sqrt_eigvals[ps][z] + (ps_fid[ps][z] @ Q[ps][z])) @ Q_inv[ps][z]
     else:
-        # assumes shape is [b, 1, nk*nl]
-        ps_new = (ps[:,0] / sqrt_eigvals[net_idx] + (ps_fid[net_idx] @ Q[net_idx])) @ Q_inv[net_idx]
-        ps_new = ps_new.unsqueeze(1)
-        
+        # assumes shape is [b, nk*nl]
+        assert len(ps_raw.shape) == 2
+        ps, z = bin_idx[0], bin_idx[1]
+        ps_new = (ps_raw / sqrt_eigvals[ps][z] + (ps_fid[ps][z] @ Q[ps][z])) @ Q_inv[ps][z]
+
     return ps_new

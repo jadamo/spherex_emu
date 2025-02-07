@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 import numpy as np
 import yaml, math, os, time
+import itertools
 
 from spherex_emu.models import blocks
 from spherex_emu.models.mlp import mlp
@@ -59,8 +60,8 @@ class pk_emulator():
         self.sqrt_eigvals = torch.load(path+"sqrt_eigenvals.dat", map_location=self.device)
         self.Q = torch.load(path+"eigenvectors.dat", map_location=self.device)
         self.Q_inv = torch.zeros_like(self.Q, device="cpu")
-        for net_idx in range(self.num_zbins*self.num_spectra):
-            self.Q_inv[net_idx] = torch.linalg.inv(self.Q[net_idx].to("cpu").to(torch.float64)).to(torch.float32)
+        for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
+            self.Q_inv[ps, z] = torch.linalg.inv(self.Q[ps, z].to("cpu").to(torch.float64)).to(torch.float32)
         self.Q_inv.to(self.device)
         #self.output_normalizations = torch.load(path+"output_normalization.dat", map_location=self.device)
 
@@ -100,11 +101,12 @@ class pk_emulator():
         train_loader = self.load_data("training", self.training_set_fraction)
         valid_loader = self.load_data("validation")
 
-        self.train_loss  = [[] for i in range(self.num_spectra * self.num_zbins)]
-        self.valid_loss = [[] for i in range(self.num_spectra * self.num_zbins)]
-        self.effective_lr = [[] for i in range(self.num_spectra * self.num_zbins)]
-        best_loss = [torch.inf for i in range(self.num_spectra * self.num_zbins)]
-        epochs_since_update = [0 for i in range(self.num_spectra * self.num_zbins)]
+        # store training data as nested lists with dims [nps, nz]
+        self.train_loss  = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
+        self.valid_loss = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
+        self.effective_lr = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
+        best_loss = [[torch.inf for i in range(self.num_zbins)] for j in range(self.num_spectra)]
+        epochs_since_update = [[0 for i in range(self.num_zbins)] for j in range(self.num_spectra)]
         if self.print_progress: print("Initial learning rate = {:0.2e}".format(self.learning_rate))
         
         self._set_optimizer()
@@ -112,36 +114,36 @@ class pk_emulator():
         # loop thru epochs
         for epoch in range(self.num_epochs):
             # loop thru individual networks
-            for net_idx in range(self.num_spectra * self.num_zbins):
-                if epochs_since_update[net_idx] > self.early_stopping_epochs:
+            for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
+                if epochs_since_update[ps][z] > self.early_stopping_epochs:
                     continue
 
-                training_loss = self._train_one_epoch(train_loader, net_idx, self.optimizer[net_idx])
+                training_loss = self._train_one_epoch(train_loader, [ps, z], self.optimizer[ps][z])
                 t1 = time.time()
                 if self.recalculate_train_loss:
-                    self.train_loss[net_idx].append(calc_avg_loss(self.model, train_loader, self.input_normalizations, 
+                    self.train_loss[ps][z].append(calc_avg_loss(self.model, train_loader, self.input_normalizations, 
                                                                   self.ps_fid, self.invcov, self.sqrt_eigvals, 
-                                                                  self.Q, self.Q_inv, self.loss_function, net_idx))
+                                                                  self.Q, self.Q_inv, self.loss_function, [ps, z]))
                 else:
-                    self.train_loss[net_idx].append(training_loss)
-                self.valid_loss[net_idx].append(calc_avg_loss(self.model, valid_loader, self.input_normalizations, 
+                    self.train_loss[ps][z].append(training_loss)
+                self.valid_loss[ps][z].append(calc_avg_loss(self.model, valid_loader, self.input_normalizations, 
                                                               self.ps_fid, self.invcov, self.sqrt_eigvals, 
-                                                              self.Q, self.Q_inv, self.loss_function, net_idx))
+                                                              self.Q, self.Q_inv, self.loss_function, [ps, z]))
                 #print("loss stats took {:0.1f}s to calculate".format(time.time() - t1))
-                self.effective_lr[net_idx].append(self.optimizer[net_idx].param_groups[0]['lr'])
-                self.scheduler[net_idx].step(self.valid_loss[net_idx][-1])
+                self.effective_lr[ps][z].append(self.optimizer[ps][z].param_groups[0]['lr'])
+                self.scheduler[ps][z].step(self.valid_loss[ps][z][-1])
 
-                if self.valid_loss[net_idx][-1] < best_loss[net_idx]:
-                    best_loss[net_idx] = self.valid_loss[net_idx][-1]
+                if self.valid_loss[ps][z][-1] < best_loss[ps][z]:
+                    best_loss[ps][z] = self.valid_loss[ps][z][-1]
                     self._save_model()
-                    epochs_since_update[net_idx] = 0
+                    epochs_since_update[ps][z] = 0
                 else:
-                    epochs_since_update[net_idx] += 1
+                    epochs_since_update[ps][z] += 1
 
-                if self.print_progress: print("Net idx : {:d}, Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(
-                    net_idx, epoch, self.train_loss[net_idx][-1], self.valid_loss[net_idx][-1], epochs_since_update[net_idx]))
-                if epochs_since_update[net_idx] > self.early_stopping_epochs:
-                    print("Model {:d} has not impvored for {:0.0f} epochs. Initiating early stopping...".format(net_idx, epochs_since_update[net_idx]))
+                if self.print_progress: print("Net idx : [{:d}, {:d}], Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(
+                    ps, z, epoch, self.train_loss[ps][z][-1], self.valid_loss[ps][z][-1], epochs_since_update[ps][z]))
+                if epochs_since_update[ps][z] > self.early_stopping_epochs:
+                    print("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[net_idx]))
 
     def get_power_spectra(self, params):
         """Gets the power spectra corresponding to the given input params by passing them though the network"""
@@ -149,9 +151,7 @@ class pk_emulator():
         self.model.eval()
         with torch.no_grad():
             params = self._check_params(params)
-            #t1 = time.time()
             pk = self.model.forward(params)
-            #print(time.time() - t1)
             pk = un_normalize_power_spectrum(pk, self.ps_fid, self.sqrt_eigvals, self.Q, self.Q_inv)
             pk = pk.view(self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
             pk = pk.to("cpu").detach().numpy()
@@ -208,9 +208,9 @@ class pk_emulator():
             self.ps_fid = torch.from_numpy(np.load(ps_file)).to(torch.float32).to(self.device)
             if self.ps_fid.shape[3] == self.num_kbins:
                 self.ps_fid = torch.permute(self.ps_fid, (1, 0, 3, 2))
-            self.ps_fid = self.ps_fid.reshape(self.num_spectra * self.num_zbins, self.num_kbins * self.num_ells)
+            self.ps_fid = self.ps_fid.reshape(self.num_spectra, self.num_zbins, self.num_kbins * self.num_ells)
         else:
-            self.ps_fid = torch.zeros((self.num_spectra * self.num_zbins, self.num_kbins * self.num_ells)).to(self.device)
+            self.ps_fid = torch.zeros((self.num_spectra, self.num_zbins, self.num_kbins * self.num_ells)).to(self.device)
 
     def _init_inverse_covariance(self):
         """Loads the inverse data covariance matrix for use in certain loss functions and normalizations"""
@@ -223,24 +223,25 @@ class pk_emulator():
             self.invcov = torch.load(cov_file+"invcov.dat", weights_only=True).to(torch.float64)
         else:
             self.invcov = torch.eye(self.num_ells*self.num_kbins).unsqueeze(0)
-            self.invcov = self.invcov.repeat(self.num_zbins * self.num_spectra, 1, 1)  
+            self.invcov = self.invcov.repeat(self.num_spectra, self.num_zbins, 1, 1)  
 
     def _diagonalize_covariance(self):
         """performs an eigenvalue decomposition of the inverse covariance matrix
            this function is always performed on cpu in double percision to improve stability"""
         self.Q = torch.zeros_like(self.invcov)
         self.Q_inv = torch.zeros_like(self.invcov)
-        self.sqrt_eigvals = torch.zeros((self.invcov.shape[0], self.invcov.shape[1]))
-        for idx in range(self.num_zbins*self.num_spectra):
-            eig, q = torch.linalg.eigh(self.invcov[idx])
+        self.sqrt_eigvals = torch.zeros((self.invcov.shape[0], self.invcov.shape[1], self.invcov.shape[2]))
+        
+        for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
+            eig, q = torch.linalg.eigh(self.invcov[ps, z])
 
             assert torch.all(torch.isnan(q)) == False
             assert torch.all(eig > 0), "ERROR! inverse covariance matrix has negative eigenvalues? Is it positive definite?"
             
-            self.Q[idx] = q.real
-            self.Q_inv[idx] = torch.linalg.inv(q).real
+            self.Q[ps, z] = q.real
+            self.Q_inv[ps, z] = torch.linalg.inv(q).real
             # store the sqrt of the eigenvalues to reduce # of floating point operations
-            self.sqrt_eigvals[idx] = torch.sqrt(eig.real)
+            self.sqrt_eigvals[ps, z] = torch.sqrt(eig.real)
 
         # move data to gpu and convert to single percision
         self.invcov = self.invcov.to(torch.float32).to(self.device)
@@ -283,27 +284,29 @@ class pk_emulator():
             m.initialize_params(self.weight_initialization)
 
     def _set_optimizer(self):
-        self.optimizer = []
-        self.scheduler = []
-        for idx in range(self.num_zbins * self.num_spectra):
+        self.optimizer = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
+        self.scheduler = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
+        for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
+            net_idx = (z * self.num_spectra) + ps
             if self.optimizer_type == "Adam":
-                self.optimizer.append(torch.optim.Adam(self.model.networks[idx].parameters(), 
-                                                       lr=self.learning_rate))
+                self.optimizer[ps][z] = torch.optim.Adam(self.model.networks[net_idx].parameters(), 
+                                                         lr=self.learning_rate)
             else:
                 print("Error! Invalid optimizer type specified!")
 
             # use an adaptive learning rate
-            self.scheduler.append(torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer[idx],
-                                  "min", factor=0.1, patience=15))
+            self.scheduler[ps][z] = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer[ps][z],
+                                    "min", factor=0.1, patience=15)
 
     def _save_model(self):
         """saves the current model state and normalization information to file"""
         # training data
-        for net_idx in range(self.num_zbins * self.num_spectra):
-            training_data = torch.vstack([torch.Tensor(self.train_loss[net_idx]), 
-                                          torch.Tensor(self.valid_loss[net_idx]),
-                                          torch.Tensor(self.effective_lr[net_idx])])
-            torch.save(training_data, self.input_dir+self.save_dir+"train_data_"+str(net_idx)+".dat")
+        
+        for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
+            training_data = torch.vstack([torch.Tensor(self.train_loss[ps][z]), 
+                                          torch.Tensor(self.valid_loss[ps][z]),
+                                          torch.Tensor(self.effective_lr[ps][z])])
+            torch.save(training_data, self.input_dir+self.save_dir+"train_data_"+str(ps)+"_"+str(z)+".dat")
         
         # configuration data
         with open(self.input_dir+self.save_dir+'config.yaml', 'w') as outfile:
@@ -336,27 +339,27 @@ class pk_emulator():
         norm_params = normalize_cosmo_params(params, self.input_normalizations)
         return norm_params
 
-    def _train_one_epoch(self, train_loader, net_idx, optimizer):
+    def _train_one_epoch(self, train_loader, bin_idx, optimizer):
         """basic training loop"""
         total_loss = 0.
         total_time = 0
-        z_idx = int(net_idx / self.num_spectra)
-        ps_idx = int(net_idx % self.num_spectra)
+        ps_idx = bin_idx[0]
+        z_idx = bin_idx[1]
+        net_idx = (z_idx * self.num_spectra) + ps_idx
         for (i, batch) in enumerate(train_loader):
             t1 = time.time()
             
             params = self.model.organize_parameters(batch[0])
             params = normalize_cosmo_params(params, self.input_normalizations)
             
-            target = batch[1][:,ps_idx,z_idx].unsqueeze(1)
+            target = batch[1][:,ps_idx,z_idx]
             prediction = self.model.forward(params, net_idx)
             prediction = un_normalize_power_spectrum(prediction, self.ps_fid, 
                                                      self.sqrt_eigvals, 
                                                      self.Q, self.Q_inv,
-                                                     net_idx)
-            
+                                                     [ps_idx, z_idx])
             # print(prediction.shape, target.shape, self.invcov.shape)
-            loss = self.loss_function(prediction, target, self.invcov, net_idx)
+            loss = self.loss_function(prediction, target, self.invcov, [ps_idx, z_idx])
             assert torch.isnan(loss) == False
             assert torch.isinf(loss) == False
             optimizer.zero_grad(set_to_none=True)
@@ -367,5 +370,5 @@ class pk_emulator():
             total_time+= (time.time() - t1)
 
         # Uncomment if you want to see how long each epoch is taking
-        # if self.print_progress: print("time for epoch: {:0.1f}s, time per batch: {:0.1f}ms".format(total_time, 1000*total_time / len(train_loader)))
+        if self.print_progress: print("time for epoch: {:0.1f}s, time per batch: {:0.1f}ms".format(total_time, 1000*total_time / len(train_loader)))
         return (total_loss / len(train_loader))
