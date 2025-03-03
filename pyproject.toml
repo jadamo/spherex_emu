@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spherex_emu"
+description = "package for emulating the galaxy power spectrum using neural networks"
+version = "0.2"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Joe Adamo", email = "jadamo@arizona.edu" }
+]
+requires-python = ">= 3.9"
+dependencies = [
+    "setuptools",
+    "build",
+    "numpy",
+    "scipy",
+    "torch",
+    "pytest",
+    "pyyaml"
+]
+
+# required because I have an old directory structure
+# TODO: Update to src/.. so this isn't necesary
+[tool.setuptools]
+py-modules = ['spherex_emu']
+
+[tool.setuptools.package-data]
+spherex_emu = ['spherex_emu/*']

@@ -144,7 +144,7 @@ class pk_emulator():
                 if self.print_progress: print("Net idx : [{:d}, {:d}], Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(
                     ps, z, epoch, self.train_loss[ps][z][-1], self.valid_loss[ps][z][-1], epochs_since_update[ps][z]))
                 if epochs_since_update[ps][z] > self.early_stopping_epochs:
-                    print("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[net_idx]))
+                    print("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[ps][z]))
 
     def get_power_spectra(self, params, kbins=None):
         """Gets the power spectra corresponding to the given input params by passing them though the network"""
