@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "spherex_emu"
 description = "package for emulating the galaxy power spectrum using neural networks"
-version = "0.2"
+version = "0.2.1"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
@@ -17,13 +17,15 @@ dependencies = [
     "build",
     "numpy",
     "scipy",
-    "torch",
+    "torch; extra != 'gpu'",
     "pytest",
     "pyyaml"
 ]
 
+[project.optional-dependencies]
+gpu = ["torch @ https://download.pytorch.org/whl/cu118"]
+
 # required because I have an old directory structure
-# TODO: Update to src/.. so this isn't necesary
 [tool.setuptools]
 py-modules = ['spherex_emu']
 

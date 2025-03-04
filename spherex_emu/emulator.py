@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from torch.nn import functional as F
 import numpy as np
 import yaml, math, os, time
 import itertools
@@ -17,17 +16,20 @@ from spherex_emu.utils import load_config_file, calc_avg_loss, get_parameter_ran
 class pk_emulator():
     """Class defining the neural network emulator."""
 
-    def __init__(self, net_dir="", config_dict:dict=None):
+    def __init__(self, net_dir:str, mode:str="train"):
         """Emulator constructor, initializes the network structure and all supporting data
 
         Args:
-            net_dir: string specifying location of the trained emulator to load from
-            config_dict: dictionary of config options to use If not None, will be used instead of 
-                the dictionary specified by config_file. Default None
+            net_dir: string specifying either the directory or full filepath of the trained emulator to load from.
+            if a directory, assumes the config file is called "config.yaml"
+            mode: whether the emulator should initialize for training, or to load from a previous training run. One 
+            of either ["train", "eval"]. Detailt "train"
+
+        Raises:
+            KeyError: if mode is not correctly specified
         """
-        # TODO: decide if I want to add load_trained_model() to the constructor (leaning towards no)
-        if net_dir is not "":   self.config_dict = load_config_file(net_dir+"config.yaml")
-        else:                   self.config_dict = config_dict
+        if net_dir.endswith(".yaml"): self.config_dict = load_config_file(net_dir)
+        else:                         self.config_dict = load_config_file(net_dir+"config.yaml")
 
         # load dictionary entries into their own class variables
         for key in self.config_dict:
@@ -36,21 +38,30 @@ class pk_emulator():
         self._init_device()
         self._init_model()
         self._init_loss()
-        self._init_fiducial_power_spectrum()
-        self._init_inverse_covariance()
-        self._diagonalize_covariance()
-        self._init_input_normalizations()
-        
-        self.model.apply(self._init_weights)
 
-    def load_trained_model(self, path=""):
-        """loads the pre-trained layers from file into the current model, as well as all relavent information needed for normalization
+        if mode == "train":
+            self._init_fiducial_power_spectrum()
+            self._init_inverse_covariance()
+            self._diagonalize_covariance()
+            self._init_input_normalizations()
+            self.model.apply(self._init_weights)
+
+        elif mode == "eval":
+            self.load_trained_model(net_dir)
+
+        else:
+            print("ERROR! Invalid mode specified! Must be one of ['train', 'eval']")
+            raise KeyError
+
+    def load_trained_model(self, path):
+        """loads the pre-trained network from file into the current model, as well as all relavent information needed for normalization.
+        This function is called by the constructor, but can also be called directly by the user if desired.
         
         Args:
             path: The directory+filename of the trained network to load. 
             If blank, uses "save_dir" found in the object's config dictionary
         """
-        if path == "": path = self.input_dir+self.save_dir
+        print("loading emulator from " + path)
         self.model.eval()
         self.model.load_state_dict(torch.load(path+'network.params', map_location=self.device))
         
@@ -227,11 +238,11 @@ class pk_emulator():
         """Loads the inverse data covariance matrix for use in certain loss functions and normalizations"""
         # TODO: Upgrade to handle different number of k-bins for each zbin
         cov_file = self.input_dir+self.training_dir
-        # Temporarily store with double percision to increase numerical stability
-        if os.path.exists(cov_file+"invcov.npy"):
-            self.invcov = torch.from_numpy(np.load(cov_file+"invcov.npy"))
-        elif os.path.exists(cov_file+"invcov.dat"):
+        # Temporarily store with double percision to increase numerical stability\
+        if os.path.exists(cov_file+"invcov.dat"):
             self.invcov = torch.load(cov_file+"invcov.dat", weights_only=True).to(torch.float64)
+        elif os.path.exists(cov_file+"invcov.npy"):
+            self.invcov = torch.from_numpy(np.load(cov_file+"invcov.npy"))
         else:
             self.invcov = torch.eye(self.num_ells*self.num_kbins).unsqueeze(0)
             self.invcov = self.invcov.repeat(self.num_spectra, self.num_zbins, 1, 1)  
@@ -242,7 +253,7 @@ class pk_emulator():
         self.Q = torch.zeros_like(self.invcov)
         self.Q_inv = torch.zeros_like(self.invcov)
         self.sqrt_eigvals = torch.zeros((self.invcov.shape[0], self.invcov.shape[1], self.invcov.shape[2]))
-        
+
         for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
             eig, q = torch.linalg.eigh(self.invcov[ps, z])
 

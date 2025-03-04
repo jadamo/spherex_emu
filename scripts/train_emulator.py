@@ -9,7 +9,7 @@ def main():
         return 0
 
     t1 = time.time()
-    emulator = pk_emulator(sys.argv[1])
+    emulator = pk_emulator(sys.argv[1], "train")
     print("Training network on device:", emulator.device)
     emulator.train()
     t2 = time.time()
