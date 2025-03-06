@@ -4,7 +4,7 @@ from torch.nn import functional as F
 import itertools, math
 
 import spherex_emu.models.blocks as blocks
-from spherex_emu.utils import get_parameter_ranges, load_config_file, un_normalize
+from spherex_emu.utils import get_parameter_ranges, load_config_file
 
 class mlp(nn.Module):
 
@@ -74,6 +74,6 @@ class mlp(nn.Module):
         X = torch.sigmoid(self.h2(X))
 
         X = X.view(-1, self.num_zbins, self.num_spectra, self.num_ells, self.num_kbins)
-        X = un_normalize(X, self.output_normalizations)
+        #X = un_normalize(X, self.output_normalizations)
 
         return X

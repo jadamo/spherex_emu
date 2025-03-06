@@ -11,8 +11,11 @@ class transformer(nn.Module):
         super().__init__()
 
         # TODO: Allow specification of activation function
-        self.num_zbins = config_dict["num_zbins"]
-        self.num_spectra = config_dict["num_samples"] +  math.comb(config_dict["num_samples"], 2)
+        #self.num_zbins = config_dict["num_zbins"]
+        #self.num_spectra = config_dict["num_samples"] +  math.comb(config_dict["num_samples"], 2)
+        self.num_zbins = 1
+        self.num_spectra = 1
+        
         self.num_ells = config_dict["num_ells"]
         self.num_kbins = config_dict["num_kbins"]
 
