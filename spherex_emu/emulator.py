@@ -114,15 +114,16 @@ class pk_emulator():
         valid_loader = self.load_data("validation")
 
         # store training data as nested lists with dims [nps, nz]
-        self.train_loss  = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
-        self.valid_loss = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
-        self.effective_lr = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
-        best_loss = [[torch.inf for i in range(self.num_zbins)] for j in range(self.num_spectra)]
+        self.train_loss     = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
+        self.valid_loss     = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
+        best_loss           = [[torch.inf for i in range(self.num_zbins)] for j in range(self.num_spectra)]
         epochs_since_update = [[0 for i in range(self.num_zbins)] for j in range(self.num_spectra)]
+        self.train_time = 0.
         if self.print_progress: print("Initial learning rate = {:0.2e}".format(self.learning_rate))
         
         self._set_optimizer()
         self.model.train()
+        start_time = time.time()
         # loop thru epochs
         for epoch in range(self.num_epochs):
             # loop thru individual networks
@@ -130,25 +131,24 @@ class pk_emulator():
                 if epochs_since_update[ps][z] > self.early_stopping_epochs:
                     continue
 
-                training_loss = self._train_one_epoch(train_loader, [ps, z], self.optimizer[ps][z])
-                t1 = time.time()
+                training_loss = self._train_one_epoch(train_loader, [ps, z])
                 if self.recalculate_train_loss:
                     self.train_loss[ps][z].append(calc_avg_loss(self.model, train_loader, self.input_normalizations, 
-                                                                  self.ps_fid, self.invcov, self.sqrt_eigvals, 
-                                                                  self.Q, self.Q_inv, self.loss_function, [ps, z]))
+                                                                self.ps_fid, self.invcov, self.sqrt_eigvals, 
+                                                                self.Q, self.Q_inv, self.loss_function, [ps, z]))
                 else:
                     self.train_loss[ps][z].append(training_loss)
                 self.valid_loss[ps][z].append(calc_avg_loss(self.model, valid_loader, self.input_normalizations, 
-                                                              self.ps_fid, self.invcov, self.sqrt_eigvals, 
-                                                              self.Q, self.Q_inv, self.loss_function, [ps, z]))
-                #print("loss stats took {:0.1f}s to calculate".format(time.time() - t1))
-                self.effective_lr[ps][z].append(self.optimizer[ps][z].param_groups[0]['lr'])
+                                                            self.ps_fid, self.invcov, self.sqrt_eigvals, 
+                                                            self.Q, self.Q_inv, self.loss_function, [ps, z]))
+                
                 self.scheduler[ps][z].step(self.valid_loss[ps][z][-1])
+                self.train_time = time.time() - start_time
 
                 if self.valid_loss[ps][z][-1] < best_loss[ps][z]:
                     best_loss[ps][z] = self.valid_loss[ps][z][-1]
-                    self._save_model()
                     epochs_since_update[ps][z] = 0
+                    self._save_model()
                 else:
                     epochs_since_update[ps][z] += 1
 
@@ -162,7 +162,6 @@ class pk_emulator():
 
         self.model.eval()
         with torch.no_grad():
-
             params = self._check_params(params)
             pk = self.model.forward(params)
             pk = un_normalize_power_spectrum(pk, self.ps_fid, self.sqrt_eigvals, self.Q, self.Q_inv)
@@ -327,7 +326,7 @@ class pk_emulator():
         for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
             training_data = torch.vstack([torch.Tensor(self.train_loss[ps][z]), 
                                           torch.Tensor(self.valid_loss[ps][z]),
-                                          torch.Tensor(self.effective_lr[ps][z])])
+                                          torch.Tensor([self.train_time]*len(self.valid_loss[ps][z]))])
             torch.save(training_data, self.input_dir+self.save_dir+"train_data_"+str(ps)+"_"+str(z)+".dat")
         
         # configuration data
@@ -335,10 +334,13 @@ class pk_emulator():
         with open(self.input_dir+self.save_dir+'config.yaml', 'w') as outfile:
             yaml.dump(dict(self.config_dict), outfile, sort_keys=False, default_flow_style=False)
 
-        # data needed for normalization
+        # data related to input parameters
+        # TODO: combine these into one file
         torch.save(self.input_normalizations, self.input_dir+self.save_dir+"param_bounds.dat")
-        torch.save(self.params_list, self.input_dir+self.save_dir+"")
+        with open(self.input_dir+self.save_dir+"param_names.txt", "w") as outfile:
+            yaml.dump(self.get_required_parameters(), outfile, sort_keys=False, default_flow_style=False)
 
+        # data related to output normalization
         torch.save(self.ps_fid, self.input_dir+self.save_dir+"ps_fid.dat")
         torch.save(self.invcov, self.input_dir+self.save_dir+"invcov.dat")
         torch.save(self.sqrt_eigvals, self.input_dir+self.save_dir+"sqrt_eigenvals.dat")
@@ -363,7 +365,7 @@ class pk_emulator():
         norm_params = normalize_cosmo_params(params, self.input_normalizations)
         return norm_params
 
-    def _train_one_epoch(self, train_loader, bin_idx, optimizer):
+    def _train_one_epoch(self, train_loader, bin_idx):
         """basic training loop"""
         total_loss = 0.
         total_time = 0
@@ -386,10 +388,10 @@ class pk_emulator():
             loss = self.loss_function(prediction, target, self.invcov, [ps_idx, z_idx])
             assert torch.isnan(loss) == False
             assert torch.isinf(loss) == False
-            optimizer.zero_grad(set_to_none=True)
+            self.optimizer[ps_idx][z_idx].zero_grad(set_to_none=True)
             loss.backward()
 
-            optimizer.step()
+            self.optimizer[ps_idx][z_idx].step()
             total_loss += loss.detach()
             total_time+= (time.time() - t1)
 

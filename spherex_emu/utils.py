@@ -179,9 +179,9 @@ def hyperbolic_chi2_loss(predict, target, invcov, bin_idx=None):
 def delta_chi_squared(predict, target, invcov, bin_idx=None):
 
     if not isinstance(predict, torch.Tensor):
-        predict = torch.from_numpy(predict).to(torch.float32)
+        predict = torch.from_numpy(predict).to(torch.float32).to(invcov.device)
     if not isinstance(target, torch.Tensor):
-        target = torch.from_numpy(target).to(torch.float32)
+        target = torch.from_numpy(target).to(torch.float32).to(invcov.device)
 
     # inputs are size [b, 1, nl*nk]
     # OR [nps, nz, nk, nl] (same as cosmo_inference)

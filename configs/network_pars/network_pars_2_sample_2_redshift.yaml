@@ -1,38 +1,46 @@
 
+# directory that all other paths are relative to
+input_dir: /Users/JoeyA/Research/SPHEREx/spherex_emu/
 # file paths are relative w.r.t. the repository directory
 # Where to save the network
-save_dir: ./emulators/transformer_2_sample_2_redshift/
+save_dir: ./emulators/stacked_transformer_E2E/
 # Where your training set lives
-training_dir: ../../Data/Training-Set-EFT-2s-2z/
+training_dir: ../../Data/SPHEREx-Data/Training-Set-EFT-2s-2z/
 # Location of config file with cosmology + bias parameters
 # This file contains all of the parameter ranges
 cosmo_dir : ./configs/cosmo_pars/eft_2_sample_2_redshift.yaml
 
-model_type : Transformer
-loss_type : hyperbolic
+model_type : stacked_transformer
+loss_type : hyperbolic_chi2
 
-num_cosmo_params : 4
-num_bias_params : 1
+num_cosmo_params : 3
+num_bias_params : 6
 num_samples : 2
 num_zbins   : 2
 num_ells    : 2
 num_kbins   : 25
 
+# specifications are for each network - will be repeated for each sample / redshift bin
 num_mlp_blocks      : 2
-mlp_dims            : [100, 100, 100]
-num_block_layers    : 2
+# mlp_dims should be num_mlp_blocks+1 long
+mlp_dims            : [50, 50, 50]
+num_block_layers    : 5
 use_batchnorm       : False
 use_skip_connection : True
 
 num_transformer_blocks : 1
-split_dim              : 16
+split_dim              : 5
+split_size             : 20
 
 # Training parameters
-num_epochs: 350
-learning_rate: [4.65e-04, 1.0e-4]
-batch_size: 100
-training_set_fraction : 1.0
+num_epochs: 400
+learning_rate: 2.0e-04
+batch_size: 250
+training_set_fraction : 0.1
 early_stopping_epochs: 25
 weight_initialization: He
 optimizer_type : Adam
-use_gpu : True
+use_gpu : False
+recalculate_train_loss : False
+print_progress : True
+

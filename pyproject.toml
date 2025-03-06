@@ -17,7 +17,7 @@ dependencies = [
     "build",
     "numpy",
     "scipy",
-    "torch; extra != 'gpu'",
+    "torch >=2.0; extra != 'gpu'",
     "pytest",
     "pyyaml"
 ]
