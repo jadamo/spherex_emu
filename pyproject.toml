@@ -29,5 +29,11 @@ gpu = ["torch @ https://download.pytorch.org/whl/cu118"]
 [tool.setuptools]
 py-modules = ['spherex_emu']
 
+[tool.setuptools.packages.find]
+where = ["spherex_emu"]
+
 [tool.setuptools.package-data]
 spherex_emu = ['spherex_emu/*']
+
+[project.urls]
+Homepage = "https://github.com/jadamo/spherex_emu"
