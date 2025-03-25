@@ -2,17 +2,15 @@ import torch
 #import torch.nn as nn
 import numpy as np
 
-from spherex_emu.utils import load_config_file
+from spherex_emu.utils import load_config_file, normalize_power_spectrum, un_normalize_power_spectrum
 
 class pk_galaxy_dataset(torch.utils.data.Dataset):
 
     def __init__(self, data_dir:str, type:str, frac=1.):
         
         self._load_data(data_dir, type, frac)
-        #self._set_normalization(data_dir, type)
-        #self.pk = normalize(self.pk, self.output_normalizations)
-        #self.pk = self.pk.view(-1, self.num_zbins * self.num_samples, self.num_ells * self.num_kbins)
-        self.pk = self.pk.reshape(-1, self.num_spectra, self.num_zbins, self.num_kbins*self.num_ells)
+
+        #self.pk = self.pk.reshape(-1, self.num_zbins, self.num_spectra, self.num_kbins, self.num_ells)
 
     def _load_data(self, data_dir, type, frac):
 
@@ -33,6 +31,7 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self.cosmo_params = header_info["cosmo_params"]
         self.bias_params = header_info["bias_params"]
 
+        # TODO: change training set script such that we can remove this line
         self.pk = torch.permute(self.pk, (0, 2, 1, 4, 3))
 
         self.num_spectra = self.pk.shape[1]
@@ -56,6 +55,26 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self.params = self.params.to(device)
         self.pk = self.pk.to(device)
     
-    def get_power_spectra(self, idx):        
-        return self.pk[idx].view(self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
+    def normalize_data(self, ps_fid, sqrt_eigvals, Q):
+        self.pk = normalize_power_spectrum(torch.flatten(self.pk, start_dim=3), ps_fid, sqrt_eigvals, Q)
+        self.pk = self.pk.reshape(-1, self.num_spectra, self.num_zbins, self.num_kbins*self.num_ells)
 
+    def get_normalized_power_spectra(self, idx):
+        
+        if isinstance(idx, int): 
+            return torch.flatten(self.pk[idx], start_dim=2)
+        else:
+            return torch.flatten(self.pk[idx], start_dim=3)
+    
+    def get_true_power_spectra(self, idx, ps_fid, sqrt_eigvals, Q, Q_inv):
+        
+        if isinstance(idx, int): 
+            flatten_dim = 2
+            final_shape = (self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
+        else:                    
+            flatten_dim = 3
+            final_shape = (-1, self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
+
+        ps_true = un_normalize_power_spectrum(torch.flatten(self.pk[idx], start_dim=flatten_dim), ps_fid, sqrt_eigvals, Q, Q_inv)
+        ps_true = ps_true.reshape(final_shape)        
+        return ps_true

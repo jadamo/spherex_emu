@@ -136,7 +136,6 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
             all_params = np.vstack([all_params, params])
             all_pk = np.vstack([all_pk, pk])
 
-    print(all_params.shape, all_pk.shape)
     N = all_params.shape[0]
     N_train = int(N * train_frac)
     N_valid = int(N * valid_frac)
@@ -166,17 +165,17 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
                 params=all_params[valid_end:test_end], 
                 pk=all_pk[valid_end:test_end])    
 
-def mse_loss(predict, target, invcov=None, bin_idx=None):
+def mse_loss(predict, target, invcov=None, normalized=False):
     return F.mse_loss(predict, target, reduction="sum")
 
-def hyperbolic_loss(predict, target, invcov=None, bin_idx=None):
+def hyperbolic_loss(predict, target, invcov=None, normalized=False):
     return torch.mean(torch.sqrt(1 + 2*(predict - target)**2)) - 1
 
-def hyperbolic_chi2_loss(predict, target, invcov, bin_idx=None):
-    chi2 = delta_chi_squared(predict, target, invcov, bin_idx)
+def hyperbolic_chi2_loss(predict, target, invcov, normalized=False):
+    chi2 = delta_chi_squared(predict, target, invcov, normalized)
     return torch.mean(torch.sqrt(1 + 2*chi2)) - 1
 
-def delta_chi_squared(predict, target, invcov, bin_idx=None):
+def delta_chi_squared(predict, target, invcov, normalized=False):
 
     if not isinstance(predict, torch.Tensor):
         predict = torch.from_numpy(predict).to(torch.float32).to(invcov.device)
@@ -190,7 +189,8 @@ def delta_chi_squared(predict, target, invcov, bin_idx=None):
     delta = predict - target
 
     chi2 = 0
-    if bin_idx == None:
+    # calculate the delta chi2 for the entire emulator output, assuming normalization has been undone
+    if normalized == False:
         assert len(delta.shape) == 4
         (nps, nz, nk, nl) = delta.shape
         for z in range(nz):
@@ -199,12 +199,7 @@ def delta_chi_squared(predict, target, invcov, bin_idx=None):
                     delta[:,z].flatten()))
     else:
         assert len(delta.shape) == 2
-        ps_idx = bin_idx[0]
-        z_idx = bin_idx[1]
-
-        chi2 = torch.matmul(delta.unsqueeze(1), 
-                            torch.matmul(invcov[ps_idx][z_idx], 
-                            delta.unsqueeze(2)))
+        chi2 = torch.bmm(delta.unsqueeze(1), delta.unsqueeze(2)).squeeze()
 
     chi2 = torch.sum(chi2)
     return chi2
@@ -215,65 +210,41 @@ def calc_avg_loss(net, data_loader, input_normalizations,
 
     # if net_idx not specified, recursively call the function with all possible values
     if bin_idx == None:
-        total_loss = torch.zeros(invcov.shape[0], invcov.shape[1], requires_grad=False)
-        for (ps, z) in itertools.product(range(invcov.shape[0]), range(invcov.shape[1])):
+        total_loss = torch.zeros(net.num_spectra, net.num_zbins, requires_grad=False)
+        for (ps, z) in itertools.product(range(net.num_spectra), range(net.num_zbins)):
             total_loss[ps, z] = calc_avg_loss(net, data_loader, input_normalizations, 
                                 ps_fid, invcov, sqrt_eigvals, Q, Q_inv, loss_function, [ps, z])
         return total_loss
     
     net.eval()
     avg_loss = 0.
-    net_idx = (bin_idx[1] * invcov.shape[0]) + bin_idx[0]
+    net_idx = (bin_idx[1] * net.num_spectra) + bin_idx[0]
     with torch.no_grad():
         for (i, batch) in enumerate(data_loader):
             #params = data_loader.dataset.get_repeat_params(batch[2], data_loader.dataset.num_zbins, data_loader.dataset.num_samples)
             params = net.organize_parameters(batch[0])
             params = normalize_cosmo_params(params, input_normalizations)
             prediction = net(params, net_idx)
-            target = batch[1][:,bin_idx[0],bin_idx[1]]
-            prediction = un_normalize_power_spectrum(prediction, ps_fid, 
-                                                     sqrt_eigvals, Q, Q_inv, bin_idx)
+            target = torch.flatten(batch[1][:,bin_idx[0],bin_idx[1]], start_dim=1)
+            # prediction = un_normalize_power_spectrum(prediction, ps_fid, 
+            #                                          sqrt_eigvals, Q, Q_inv, bin_idx)
             #prediction = un_normalize_power_spectrum(prediction, ps_fid, eigvals, Q, Q_inv)
-            avg_loss += loss_function(prediction, target, invcov, bin_idx).item()
+            avg_loss += loss_function(prediction, target, invcov, True).item()
 
     return avg_loss / len(data_loader)
 
 def normalize_cosmo_params(params, normalizations):
     return (params - normalizations[0]) / (normalizations[1] - normalizations[0])
 
-def normalize_power_spectrum_diagonal(ps, ps_fid, inv_cov):
-    ps_new = torch.zeros_like(ps)
-    for z in range(ps_new.shape[1]):
-        ps_new[:,z] = (ps[:,z] - ps_fid[z]) * torch.sqrt(torch.diag(inv_cov[z]))
-                       
+def normalize_power_spectrum(ps_raw, ps_fid, sqrt_eigvals, Q):
+
+    # assumes ps has shape [b, nps, z, nk*nl]
+    ps_new = torch.zeros_like(ps_raw)
+    for (ps, z) in itertools.product(range(ps_new.shape[1]), range(ps_new.shape[2])):
+        ps_new[:,ps, z] = ((ps_raw[:, ps, z] @ Q[ps, z]) - (ps_fid[ps, z].flatten() @ Q[ps, z])) * sqrt_eigvals[ps, z]
     return ps_new
 
-def normalize_power_spectrum(ps, ps_fid, sqrt_eigvals, Q):
-    ps_new = torch.zeros_like(ps)
-    for z in range(ps_new.shape[1]):
-        ps_new[:,z] = ((ps[:, z].flatten() @ Q) - (ps_fid[z].flatten() @ Q)) * sqrt_eigvals
-    return ps_new
-
-def un_normalize_power_spectrum_diagonal(ps, ps_fid, inv_cov):
-    """
-    Reverses normalization of a batch of output power spectru based on the method developed by arXiv:2402.17716,
-    assuming a totally diagonal covariance matrix
-    NOTE: This funciton has not been tested in a long time!
-    
-    Args:
-        ps: power spectrum to reverse normalization. Expected shape is [nb, nz, ns*nk*nl]
-        ps_fid: fiducial power spectrum used to reverse normalization. Expected shape is [nb, nz, ns*nk*nl]
-        inv_cov: (diagonal) inverse data covariance matrix used to reverse normalization. Expected shape is [nz, ns*nk*nl]
-    Returns:
-        ps_new: galaxy power spectrum in units of (Mpc/h)^3 in the same shape as ps
-    """
-    ps_new = torch.zeros_like(ps)
-    for idx in range(ps_new.shape[1]):
-        ps_new[:,idx] = (ps[:,idx] / torch.sqrt(torch.diag(inv_cov[idx]))) + ps_fid[idx]
-             
-    return ps_new
-
-def un_normalize_power_spectrum(ps_raw, ps_fid, sqrt_eigvals, Q, Q_inv, bin_idx:list=None):
+def un_normalize_power_spectrum(ps_raw, ps_fid, sqrt_eigvals, Q, Q_inv):
     """
     Reverses normalization of a batch of output power spectru based on the method developed by arXiv:2402.17716.
 
@@ -287,17 +258,18 @@ def un_normalize_power_spectrum(ps_raw, ps_fid, sqrt_eigvals, Q, Q_inv, bin_idx:
     Returns:
         ps_new: galaxy power spectrum multipoles in units of (Mpc/h)^3 in the same shape as ps
     """
-    if bin_idx == None:
-        # assumes shape is [b, nps, nz, nk*nl]
-        assert len(ps_raw.shape) == 4
-        ps_new = torch.zeros_like(ps_raw)
-        for (ps, z) in itertools.product(range(ps_raw.shape[1]), range(ps_raw.shape[2])):
-            #idx = (z * ps.shape[1]) + ps
-            ps_new[:, ps, z] = (ps_raw[:,ps, z] / sqrt_eigvals[ps][z] + (ps_fid[ps][z] @ Q[ps][z])) @ Q_inv[ps][z]
+
+    ps_new = torch.zeros_like(ps_raw)
+    # assumes shape is [b, nps, nz, nk*nl]
+    if len(ps_raw.shape) == 4:
+        for (ps, z) in itertools.product(range(ps_new.shape[1]), range(ps_new.shape[2])):
+            ps_new[:, ps, z] = (ps_raw[:, ps, z] / sqrt_eigvals[ps, z] + (ps_fid[ps, z] @ Q[ps, z])) @ Q_inv[ps, z]
+    # assumes shape is [nps, nz, nk*nl]
+    elif len(ps_raw.shape) == 3:
+        for (ps, z) in itertools.product(range(ps_new.shape[0]), range(ps_new.shape[1])):
+            ps_new[ps, z] = (ps_raw[ps, z] / sqrt_eigvals[ps, z] + (ps_fid[ps, z] @ Q[ps, z])) @ Q_inv[ps, z]
     else:
-        # assumes shape is [b, nk*nl]
-        assert len(ps_raw.shape) == 2
-        ps, z = bin_idx[0], bin_idx[1]
-        ps_new = (ps_raw / sqrt_eigvals[ps][z] + (ps_fid[ps][z] @ Q[ps][z])) @ Q_inv[ps][z]
+        print("ERROR! Incorrect input shape for ps_raw!", ps_raw.shape)
+        raise IndexError
 
     return ps_new
