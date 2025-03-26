@@ -1,36 +1,51 @@
+
+# directory that all other paths are relative to
+input_dir: /home/joeadamo/Research/SPHEREx/spherex_emu/
 # file paths are relative w.r.t. the repository directory
 # Where to save the network
-save_dir: ./emulators/transformer_single_sample_single_redshift/
+save_dir: ./emulators/stacked_transformer_test/
 # Where your training set lives
-training_dir: ../../Data/SPHEREx-Data/Training-Set-EFT-1s-1z/
+training_dir: ../../Data/SPHEREx-Data/Training-Set-EFT-2s-2z/
 # Location of config file with cosmology + bias parameters
-# This file contains all of the parameter default values and ranges
-cosmo_dir : ./configs/cosmo_pars/eft_single_sample_single_redshift.yaml
+# This file contains all of the parameter ranges
+cosmo_dir : ./configs/cosmo_pars/eft_2_tracer_2_redshift.yaml
 
-model_type : MLP_single_sample_single_redshift
-loss_type : hyperbolic
+model_type : stacked_transformer
+loss_type : hyperbolic_chi2
 
-num_cosmo_params : 4
-num_bias_params : 1   # The number of nuisance parameters per tracer+redshift bin
-num_samples : 1 
-num_zbins   : 1
+num_cosmo_params : 3
+num_bias_params : 6
+num_tracers : 2
+num_zbins   : 2
 num_ells    : 2
-num_kbins : 25
+num_kbins   : 25
 
+# specifications are for each network - will be repeated for each sample / redshift bin
 num_mlp_blocks      : 2
-mlp_dims            : [100, 100, 100]
-num_block_layers    : 2
+# mlp_dims should be num_mlp_blocks+1 long
+mlp_dims            : [50, 50, 50]
+num_block_layers    : 5
 use_batchnorm       : False
 use_skip_connection : True
 
 num_transformer_blocks : 1
-split_dim              : 16
+split_dim              : 5
+split_size             : 20
 
 # Training parameters
-num_epochs: 300
-learning_rate: [1.0e-3]
-batch_size: 25
+num_epochs: 400
+learning_rate: 0.005
+batch_size: 250
+training_set_fraction : 0.2
 early_stopping_epochs: 25
 weight_initialization: He
 optimizer_type : Adam
+# whether to re-calculate the training-set loss at the end of each epoch
+# Setting to true gives more accurate loss stats, but is slower
+# Validation set loss is not changed by this option
+recalculate_train_loss : False
+# whether to attempt training on GPU
+# NOTE: Small networks will possibly train faster on CPU!
 use_gpu : True
+# whether to print progress during training
+print_progress : True

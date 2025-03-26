@@ -1,21 +1,21 @@
 
 # directory that all other paths are relative to
-input_dir: /Users/JoeyA/Research/SPHEREx/spherex_emu/
+input_dir: /home/joeadamo/Research/SPHEREx/spherex_emu/
 # file paths are relative w.r.t. the repository directory
 # Where to save the network
-save_dir: ./emulators/stacked_transformer_E2E/
+save_dir: ./emulators/stacked_transformer_test/
 # Where your training set lives
 training_dir: ../../Data/SPHEREx-Data/Training-Set-EFT-2s-2z/
 # Location of config file with cosmology + bias parameters
 # This file contains all of the parameter ranges
-cosmo_dir : ./configs/cosmo_pars/eft_2_sample_2_redshift.yaml
+cosmo_dir : ./configs/cosmo_pars/eft_2_tracer_2_redshift.yaml
 
 model_type : stacked_transformer
 loss_type : hyperbolic_chi2
 
 num_cosmo_params : 3
 num_bias_params : 6
-num_samples : 2
+num_tracers : 2
 num_zbins   : 2
 num_ells    : 2
 num_kbins   : 25
@@ -34,13 +34,18 @@ split_size             : 20
 
 # Training parameters
 num_epochs: 400
-learning_rate: 2.0e-04
+learning_rate: 0.005
 batch_size: 250
-training_set_fraction : 0.1
+training_set_fraction : 0.2
 early_stopping_epochs: 25
 weight_initialization: He
 optimizer_type : Adam
-use_gpu : False
+# whether to re-calculate the training-set loss at the end of each epoch
+# Setting to true gives more accurate loss stats, but is slower
+# Validation set loss is not changed by this option
 recalculate_train_loss : False
+# whether to attempt training on GPU
+# NOTE: Small networks will possibly train faster on CPU!
+use_gpu : True
+# whether to print progress during training
 print_progress : True
-

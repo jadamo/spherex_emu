@@ -1,17 +1,26 @@
-nsample: 1
+nsample: 2
 nz: 2
 
 #Number density[h / Mpc] ^ 3:
 number_density_in_hinvMpc_1:
+  - 0.00411
+  - 0.000501
+
+number_density_in_hinvMpc_2:
   - 0.0129
   - 0.00535
 
 #HOD- C15: Galaxy bias:
 galaxy_bias_1:
+  - 1.5
+  - 1.8
+
+galaxy_bias_2:
   - 1.3
   - 1.4
 
 sigz_over_one_plus_z:
+  - 0.003
   - 0.1
 
 zbin_lo:

@@ -5,8 +5,8 @@ from spherex_emu.utils import prepare_ps_inputs, load_config_file
 
 def main():
     pars_dir = "/home/joeadamo/Research/SPHEREx/spherex_emu/configs"
-    cosmo_dict = load_config_file(pars_dir+"/cosmo_pars/eft_2_sample_2_redshift.yaml")
-    survey_pars = load_config_file(pars_dir+'/survey_pars/survey_pars_2_sample_2_redshift.yaml')
+    cosmo_dict = load_config_file(pars_dir+"/cosmo_pars/eft_2_tracer_2_redshift.yaml")
+    survey_pars = load_config_file(pars_dir+'/survey_pars/survey_pars_2_tracer_2_redshift.yaml')
 
     ndens_table = np.array([[float(survey_pars['number_density_in_hinvMpc_%s' % (i+1)][j]) for j in range(survey_pars['nz'])] for i in range(survey_pars['nsample'])])
     z_eff = (np.array(survey_pars["zbin_lo"]) + np.array(survey_pars["zbin_hi"])) / 2.
@@ -24,7 +24,7 @@ def main():
     alternate_params = {}
 
     param_vector = prepare_ps_inputs(alternate_params, cosmo_dict, ndens_table.shape[0], len(z_eff))
-    #k = np.linspace(0.01, 0.25, 25)
+
     k_data = np.load('/home/joeadamo/Research/SPHEREx/covapt_mt/data/input_data/emulator/kbins.npz')
     k = k_data["k"]
     ells = [0, 2]
