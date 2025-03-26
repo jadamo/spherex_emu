@@ -87,8 +87,8 @@ class stacked_transformer(nn.Module):
 
         # output dimensions
         self.num_zbins = config_dict["num_zbins"]
-        self.num_spectra = config_dict["num_samples"] +  math.comb(config_dict["num_samples"], 2)
-        self.num_samples = config_dict["num_samples"]
+        self.num_spectra = config_dict["num_tracers"] +  math.comb(config_dict["num_tracers"], 2)
+        self.num_tracers = config_dict["num_tracers"]
         self.num_ells = config_dict["num_ells"]
         self.num_kbins = config_dict["num_kbins"]
 
@@ -98,7 +98,7 @@ class stacked_transformer(nn.Module):
         # Stores networks sequentially in a list
         self.networks = nn.ModuleList()
         for z in range(self.num_zbins):
-            for isample1, isample2 in itertools.product(range(self.num_samples), repeat=2):
+            for isample1, isample2 in itertools.product(range(self.num_tracers), repeat=2):
                 if isample1 > isample2: continue
                 self.networks.append(single_transformer(config_dict, (isample1 != isample2)))
 
@@ -124,12 +124,12 @@ class stacked_transformer(nn.Module):
         # ordering is [params for tracer 1, params for tracer 2]
         iter = 0
         for z in range(self.num_zbins):
-            for isample1, isample2 in itertools.product(range(self.num_samples), repeat=2):
+            for isample1, isample2 in itertools.product(range(self.num_tracers), repeat=2):
                 if isample1 > isample2: continue
                 
-                idx_1 = (z*self.num_samples) + isample1
-                idx_2 = (z*self.num_samples) + isample2
-                iterate = self.num_samples*self.num_zbins
+                idx_1 = (z*self.num_tracers) + isample1
+                idx_2 = (z*self.num_tracers) + isample2
+                iterate = self.num_tracers*self.num_zbins
 
                 organized_params[:, iter, self.num_cosmo_params:self.num_cosmo_params+self.num_bias_params] \
                     = input_params[:, self.num_cosmo_params+idx_1::iterate]

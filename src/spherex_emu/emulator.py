@@ -210,7 +210,7 @@ class pk_emulator():
 
     def _init_model(self):
         """Initializes the network"""
-        self.num_spectra = self.num_samples + math.comb(self.num_samples, 2)
+        self.num_spectra = self.num_tracers + math.comb(self.num_tracers, 2)
         if self.model_type == "mlp":
             self.model = mlp(self.config_dict).to(self.device)
         elif self.model_type == "transformer":
@@ -233,8 +233,8 @@ class pk_emulator():
             __, param_bounds = get_parameter_ranges(cosmo_dict)
             input_normalizations = torch.Tensor(param_bounds.T).to(self.device)
         except IOError:
-            input_normalizations = torch.vstack((torch.zeros((self.num_cosmo_params + (self.num_samples*self.num_zbins*self.num_bias_params))),
-                                                 torch.ones((self.num_cosmo_params + (self.num_samples*self.num_zbins*self.num_bias_params))))).to(self.device)
+            input_normalizations = torch.vstack((torch.zeros((self.num_cosmo_params + (self.num_tracers*self.num_zbins*self.num_bias_params))),
+                                                 torch.ones((self.num_cosmo_params + (self.num_tracers*self.num_zbins*self.num_bias_params))))).to(self.device)
         
         lower_bounds = self.model.organize_parameters(input_normalizations[0].unsqueeze(0))
         upper_bounds = self.model.organize_parameters(input_normalizations[1].unsqueeze(0))
