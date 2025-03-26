@@ -11,7 +11,8 @@ from spherex_emu.models.stacked_transformer import stacked_transformer
 from spherex_emu.dataset import pk_galaxy_dataset
 from spherex_emu.utils import load_config_file, calc_avg_loss, get_parameter_ranges,\
                               normalize_cosmo_params, un_normalize_power_spectrum, \
-                              delta_chi_squared, mse_loss, hyperbolic_loss, hyperbolic_chi2_loss
+                              delta_chi_squared, mse_loss, hyperbolic_loss, hyperbolic_chi2_loss, \
+                              get_invcov_blocks, get_full_invcov
 
 class pk_emulator():
     """Class defining the neural network emulator."""
@@ -68,12 +69,14 @@ class pk_emulator():
         self.model.eval()
         self.model.load_state_dict(torch.load(path+'network.params', map_location=self.device))
         
-        self.input_normalizations = torch.load(path+"param_bounds.dat", map_location=self.device)
+        self.input_normalizations = torch.load(path+"input_normalizations.pt", map_location=self.device)
 
-        self.ps_fid = torch.load(path+"ps_fid.dat", map_location=self.device)
-        self.invcov = torch.load(path+"invcov.dat", map_location=self.device)
-        self.sqrt_eigvals = torch.load(path+"sqrt_eigenvals.dat", map_location=self.device)
-        self.Q = torch.load(path+"eigenvectors.dat", map_location=self.device)
+        output_norm_data = torch.load(path+"output_normalizations.pt", map_location=self.device)
+        self.ps_fid        = output_norm_data[0]
+        self.invcov_full   = output_norm_data[1]
+        self.invcov_blocks = output_norm_data[2]
+        self.sqrt_eigvals  = output_norm_data[3]
+        self.Q             = output_norm_data[4]
         self.Q_inv = torch.zeros_like(self.Q, device="cpu")
         for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
             self.Q_inv[ps, z] = torch.linalg.inv(self.Q[ps, z].to("cpu").to(torch.float64)).to(torch.float32)
@@ -136,12 +139,12 @@ class pk_emulator():
                 training_loss = self._train_one_epoch(train_loader, [ps, z])
                 if self.recalculate_train_loss:
                     self.train_loss[ps][z].append(calc_avg_loss(self.model, train_loader, self.input_normalizations, 
-                                                                self.ps_fid, self.invcov, self.sqrt_eigvals, 
+                                                                self.ps_fid, self.invcov_full, self.sqrt_eigvals, 
                                                                 self.Q, self.Q_inv, self.loss_function, [ps, z]))
                 else:
                     self.train_loss[ps][z].append(training_loss)
                 self.valid_loss[ps][z].append(calc_avg_loss(self.model, valid_loader, self.input_normalizations, 
-                                                            self.ps_fid, self.invcov, self.sqrt_eigvals, 
+                                                            self.ps_fid, self.invcov_full, self.sqrt_eigvals, 
                                                             self.Q, self.Q_inv, self.loss_function, [ps, z]))
                 
                 self.scheduler[ps][z].step(self.valid_loss[ps][z][-1])
@@ -204,6 +207,7 @@ class pk_emulator():
         elif torch.backends.mps.is_available(): self.device = torch.device("mps")
         else:                                   self.device = torch.device('cpu')
 
+
     def _init_model(self):
         """Initializes the network"""
         self.num_spectra = self.num_samples + math.comb(self.num_samples, 2)
@@ -252,30 +256,36 @@ class pk_emulator():
         else:
             self.ps_fid = torch.zeros((self.num_spectra, self.num_zbins,  self.num_kbins * self.num_ells)).to(self.device)
 
+
     def _init_inverse_covariance(self):
         """Loads the inverse data covariance matrix for use in certain loss functions and normalizations"""
 
         # TODO: Upgrade to handle different number of k-bins for each zbin
         cov_file = self.input_dir+self.training_dir
         # Temporarily store with double percision to increase numerical stability\
-        if os.path.exists(cov_file+"invcov_blocks.dat"):
-            self.invcov = torch.load(cov_file+"invcov_separate.dat", weights_only=True).to(torch.float64)
-        elif os.path.exists(cov_file+"invcov_blocks.npy"):
-            self.invcov = torch.from_numpy(np.load(cov_file+"invcov.npy"))
+        if os.path.exists(cov_file+"cov.dat"):
+            cov = torch.load(cov_file+"cov.dat", weights_only=True).to(torch.float64)
+        elif os.path.exists(cov_file+"cov.npy"):
+            cov = torch.from_numpy(np.load(cov_file+"cov.npy"))
         else:
-            self.invcov = torch.eye(self.num_ells*self.num_kbins).unsqueeze(0)
-            self.invcov = self.invcov.repeat(self.num_spectra, self.num_zbins, 1, 1)  
+            print("Could not find covariance matrix! Using identity matrix instead...")
+            cov = torch.eye(self.num_spectra*self.num_ells*self.num_kbins).unsqueeze(0)
+            cov = cov.repeat(self.num_zbins, 1, 1)  
+
+        self.invcov_blocks = get_invcov_blocks(cov, self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
+        self.invcov_full   = get_full_invcov(cov, self.num_zbins)
+
 
     def _diagonalize_covariance(self):
         """performs an eigenvalue decomposition of the each diagonal block of the inverse covariance matrix
            this function is always performed on cpu in double percision to improve stability"""
         
-        self.Q = torch.zeros_like(self.invcov)
-        self.Q_inv = torch.zeros_like(self.invcov)
+        self.Q = torch.zeros_like(self.invcov_blocks)
+        self.Q_inv = torch.zeros_like(self.invcov_blocks)
         self.sqrt_eigvals = torch.zeros((self.num_spectra, self.num_zbins, self.num_ells*self.num_kbins))
 
         for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
-            eig, q = torch.linalg.eigh(self.invcov[ps, z])
+            eig, q = torch.linalg.eigh(self.invcov_blocks[ps, z])
             assert torch.all(torch.isnan(q)) == False
             assert torch.all(eig > 0), "ERROR! inverse covariance matrix has negative eigenvalues? Is it positive definite?"
 
@@ -284,7 +294,8 @@ class pk_emulator():
             self.sqrt_eigvals[ps, z] = torch.sqrt(eig)
 
         # move data to gpu and convert to single percision
-        self.invcov = self.invcov.to(torch.float32).to(self.device)
+        self.invcov_blocks = self.invcov_blocks.to(torch.float32).to(self.device)
+        self.invcov_full = self.invcov_full.to(torch.float32).to(self.device)
         self.Q = self.Q.to(torch.float32).to(self.device)
         self.Q_inv = self.Q_inv.to(torch.float32).to(self.device)
         self.sqrt_eigvals = self.sqrt_eigvals.to(torch.float32).to(self.device)
@@ -347,11 +358,14 @@ class pk_emulator():
         """saves the current model state and normalization information to file"""
 
         # training statistics
+        if not os.path.exists(self.input_dir+self.save_dir+"training_statistics"):
+            os.mkdir(self.input_dir+self.save_dir+"training_statistics")
+
         for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
             training_data = torch.vstack([torch.Tensor(self.train_loss[ps][z]), 
                                           torch.Tensor(self.valid_loss[ps][z]),
                                           torch.Tensor([self.train_time]*len(self.valid_loss[ps][z]))])
-            torch.save(training_data, self.input_dir+self.save_dir+"train_data_"+str(ps)+"_"+str(z)+".dat")
+            torch.save(training_data, self.input_dir+self.save_dir+"training_statistics/train_data_"+str(ps)+"_"+str(z)+".dat")
         
         # configuration data
         # TODO Upgrade this to save more details (ex: what kbins was this trained with?)
@@ -360,15 +374,18 @@ class pk_emulator():
 
         # data related to input parameters
         # TODO: combine these into one file
-        torch.save(self.input_normalizations, self.input_dir+self.save_dir+"param_bounds.dat")
+        torch.save(self.input_normalizations, self.input_dir+self.save_dir+"input_normalizations.pt")
         with open(self.input_dir+self.save_dir+"param_names.txt", "w") as outfile:
             yaml.dump(self.get_required_parameters(), outfile, sort_keys=False, default_flow_style=False)
 
         # data related to output normalization
-        torch.save(self.ps_fid, self.input_dir+self.save_dir+"ps_fid.dat")
-        torch.save(self.invcov, self.input_dir+self.save_dir+"invcov.dat")
-        torch.save(self.sqrt_eigvals, self.input_dir+self.save_dir+"sqrt_eigenvals.dat")
-        torch.save(self.Q, self.input_dir+self.save_dir+"eigenvectors.dat")
+        output_files = [self.ps_fid, self.invcov_full, self.invcov_blocks, self.sqrt_eigvals, self.Q]
+        torch.save(output_files, self.input_dir+self.save_dir+"output_normalizations.pt")
+        # torch.save(self.ps_fid, self.input_dir+self.save_dir+"ps_fid.dat")
+        # torch.save(self.invcov_full, self.input_dir+self.save_dir+"invcov_full.dat")
+        # torch.save(self.invcov_blocks, self.input_dir+self.save_dir+"invcov_blocks.dat")
+        # torch.save(self.sqrt_eigvals, self.input_dir+self.save_dir+"sqrt_eigenvals.dat")
+        # torch.save(self.Q, self.input_dir+self.save_dir+"eigenvectors.dat")
 
         # Finally, the actual model parameters
         torch.save(self.model.state_dict(), self.input_dir+self.save_dir+'network.params')
@@ -407,7 +424,8 @@ class pk_emulator():
             prediction = self.model.forward(params, net_idx)
 
             # calculate loss and update network parameters
-            loss = self.loss_function(prediction, target, self.invcov, True)
+            # TODO: Find better way to deal with passing invcov to the loss function
+            loss = self.loss_function(prediction, target, self.invcov_full, True)
             assert torch.isnan(loss) == False
             assert torch.isinf(loss) == False
             self.optimizer[ps_idx][z_idx].zero_grad(set_to_none=True)

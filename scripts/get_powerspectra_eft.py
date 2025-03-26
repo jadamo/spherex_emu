@@ -20,12 +20,13 @@ def main():
     
     # set parameters to be different from their fiducial values here
     #alternate_params = {"As": 2.2e-9, "h" : 0.7, "b1_0_0" : 1.5, "b1_0_1" : 1.6, "bG2" : 0.2}
-    alternate_params = {"P_shot" : 0.}
+    #alternate_params = {"P_shot" : 0.}
+    alternate_params = {}
 
     param_vector = prepare_ps_inputs(alternate_params, cosmo_dict, ndens_table.shape[0], len(z_eff))
     #k = np.linspace(0.01, 0.25, 25)
-    k_data = np.load('/home/joeadamo/Research/SPHEREx/covapt_mt/data/input_data/kbins.npz')
-    k = k_data["k_0"]
+    k_data = np.load('/home/joeadamo/Research/SPHEREx/covapt_mt/data/input_data/emulator/kbins.npz')
+    k = k_data["k"]
     ells = [0, 2]
 
     print(param_vector)
@@ -33,7 +34,7 @@ def main():
     galaxy_ps = theory(k, ells, param_vector) / cosmo_dict["cosmo_params"]["h"]["value"]**3
 
     print(galaxy_ps.shape)
-    save_str = '/home/joeadamo/Research/Data/SPHEREx-Data/ps_E2E.npy'
+    save_str = '/home/joeadamo/Research/SPHEREx/covapt_mt/data/input_data/emulator/galaxy_ps.npy'
     print("saving to: ", save_str)
     np.save(save_str, galaxy_ps)
 

@@ -31,8 +31,6 @@ def get_parameter_ranges(cosmo_dict):
             cosmo_params[param] = [cosmo_dict["cosmo_params"][param]["prior"]["min"],
                                    cosmo_dict["cosmo_params"][param]["prior"]["max"]]
 
-    # cosmo_params = dict(sorted(cosmo_dict["cosmo_params"].items()))
-    # bias_params = dict(sorted(cosmo_dict["bias_params"].items()))
     bias_params = {}
     for param in cosmo_dict["bias_params"]:
         if "prior" in cosmo_dict["bias_params"][param]:
@@ -103,6 +101,7 @@ def make_latin_hypercube(priors, N):
     
     return params
 
+
 def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, test_frac:float, 
                           param_dim, num_zbins, num_tracers, num_ells, k_dim, remove_old_files=True):
     """Takes a set of matrices and reorganizes them into training, validation, and tests sets
@@ -165,15 +164,44 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
                 params=all_params[valid_end:test_end], 
                 pk=all_pk[valid_end:test_end])    
 
+
+def get_full_invcov(cov, num_zbins):
+
+    invcov = torch.zeros_like(cov)
+    for z in range(num_zbins):
+        invcov[z] = torch.linalg.inv(cov[z])
+    return invcov
+
+def get_invcov_blocks(cov, num_spectra, num_zbins, num_kbins, num_ells):
+
+    invcov_blocks = torch.zeros((num_spectra, num_zbins, num_ells*num_kbins, num_ells*num_kbins)).to(torch.float64)
+
+    for z in range(num_zbins):
+        for ps in range(num_spectra):
+            cov_sub = cov[z, ps*num_ells*num_kbins: (ps+1)*num_ells*num_kbins,\
+                             ps*num_ells*num_kbins: (ps+1)*num_ells*num_kbins]
+            invcov_blocks[ps, z] = torch.linalg.inv(cov_sub)
+
+            try:
+                L = torch.linalg.cholesky(invcov_blocks[ps, z])
+            except:
+                print("ERROR!, matrix block [{:d}, {:d}, {:d}] is not positive-definite!".format(z, ps, ps))
+
+    return invcov_blocks
+
+
 def mse_loss(predict, target, invcov=None, normalized=False):
     return F.mse_loss(predict, target, reduction="sum")
+
 
 def hyperbolic_loss(predict, target, invcov=None, normalized=False):
     return torch.mean(torch.sqrt(1 + 2*(predict - target)**2)) - 1
 
+
 def hyperbolic_chi2_loss(predict, target, invcov, normalized=False):
     chi2 = delta_chi_squared(predict, target, invcov, normalized)
     return torch.mean(torch.sqrt(1 + 2*chi2)) - 1
+
 
 def delta_chi_squared(predict, target, invcov, normalized=False):
 
@@ -204,8 +232,9 @@ def delta_chi_squared(predict, target, invcov, normalized=False):
     chi2 = torch.sum(chi2)
     return chi2
 
+
 def calc_avg_loss(net, data_loader, input_normalizations, 
-                  ps_fid, invcov, sqrt_eigvals, Q, Q_inv, loss_function, bin_idx=None):
+                  ps_fid, invcov_blocks, sqrt_eigvals, Q, Q_inv, loss_function, bin_idx=None):
     """run thru the given data set and returns the average loss value"""
 
     # if net_idx not specified, recursively call the function with all possible values
@@ -213,7 +242,7 @@ def calc_avg_loss(net, data_loader, input_normalizations,
         total_loss = torch.zeros(net.num_spectra, net.num_zbins, requires_grad=False)
         for (ps, z) in itertools.product(range(net.num_spectra), range(net.num_zbins)):
             total_loss[ps, z] = calc_avg_loss(net, data_loader, input_normalizations, 
-                                ps_fid, invcov, sqrt_eigvals, Q, Q_inv, loss_function, [ps, z])
+                                ps_fid, invcov_blocks, sqrt_eigvals, Q, Q_inv, loss_function, [ps, z])
         return total_loss
     
     net.eval()
@@ -221,20 +250,19 @@ def calc_avg_loss(net, data_loader, input_normalizations,
     net_idx = (bin_idx[1] * net.num_spectra) + bin_idx[0]
     with torch.no_grad():
         for (i, batch) in enumerate(data_loader):
-            #params = data_loader.dataset.get_repeat_params(batch[2], data_loader.dataset.num_zbins, data_loader.dataset.num_samples)
             params = net.organize_parameters(batch[0])
             params = normalize_cosmo_params(params, input_normalizations)
             prediction = net(params, net_idx)
             target = torch.flatten(batch[1][:,bin_idx[0],bin_idx[1]], start_dim=1)
-            # prediction = un_normalize_power_spectrum(prediction, ps_fid, 
-            #                                          sqrt_eigvals, Q, Q_inv, bin_idx)
-            #prediction = un_normalize_power_spectrum(prediction, ps_fid, eigvals, Q, Q_inv)
-            avg_loss += loss_function(prediction, target, invcov, True).item()
+
+            avg_loss += loss_function(prediction, target, invcov_blocks, True).item()
 
     return avg_loss / len(data_loader)
 
+
 def normalize_cosmo_params(params, normalizations):
     return (params - normalizations[0]) / (normalizations[1] - normalizations[0])
+
 
 def normalize_power_spectrum(ps_raw, ps_fid, sqrt_eigvals, Q):
 
@@ -243,6 +271,7 @@ def normalize_power_spectrum(ps_raw, ps_fid, sqrt_eigvals, Q):
     for (ps, z) in itertools.product(range(ps_new.shape[1]), range(ps_new.shape[2])):
         ps_new[:,ps, z] = ((ps_raw[:, ps, z] @ Q[ps, z]) - (ps_fid[ps, z].flatten() @ Q[ps, z])) * sqrt_eigvals[ps, z]
     return ps_new
+
 
 def un_normalize_power_spectrum(ps_raw, ps_fid, sqrt_eigvals, Q, Q_inv):
     """
