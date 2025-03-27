@@ -230,8 +230,8 @@ class pk_emulator():
             __, param_bounds = get_parameter_ranges(cosmo_dict)
             input_normalizations = torch.Tensor(param_bounds.T).to(self.device)
         except IOError:
-            input_normalizations = torch.vstack((torch.zeros((self.num_cosmo_params + (self.num_tracers*self.num_zbins*self.num_bias_params))),
-                                                 torch.ones((self.num_cosmo_params + (self.num_tracers*self.num_zbins*self.num_bias_params))))).to(self.device)
+            input_normalizations = torch.vstack((torch.zeros((self.num_cosmo_params + (self.num_tracers*self.num_zbins*self.num_nuisance_params))),
+                                                 torch.ones((self.num_cosmo_params + (self.num_tracers*self.num_zbins*self.num_nuisance_params))))).to(self.device)
         
         lower_bounds = self.model.organize_parameters(input_normalizations[0].unsqueeze(0))
         upper_bounds = self.model.organize_parameters(input_normalizations[1].unsqueeze(0))

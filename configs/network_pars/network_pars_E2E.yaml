@@ -12,8 +12,8 @@ cosmo_dir : ./configs/cosmo_pars/eft_2_tracer_2_redshift.yaml
 model_type : stacked_transformer
 loss_type : hyperbolic_chi2
 
-num_cosmo_params : 3
-num_bias_params : 6
+num_cosmo_params    : 4
+num_nuisance_params : 6
 num_tracers : 2
 num_zbins   : 2
 num_ells    : 2

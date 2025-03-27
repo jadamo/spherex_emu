@@ -22,7 +22,7 @@ counterterm_param_names:
   - counterterm_0
   - counterterm_2
   - counterterm_4
-  - counterterm_fog"
+  - counterterm_fog
 stochastic_param_names:
   - P_shot
   - a0
@@ -31,9 +31,9 @@ stochastic_param_names:
 cosmo_params:
   h: 
     value: 0.6736
-  omega_b: 
+  ombh2: 
     value: 0.02237
-  omega_c:
+  omch2:
     value: 0.1201
     prior:
       min: 0.05

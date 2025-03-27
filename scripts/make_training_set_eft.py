@@ -14,9 +14,15 @@ from spherex_emu.utils import *
 # GLOBAL VARIABLES
 #-------------------------------------------------------------------
 
-N = 100000
-N_PROC=int(os.environ["SLURM_CPUS_ON_NODE"])
-#N_PROC=14
+N = 14
+try:
+    N_PROC=int(os.environ["SLURM_CPUS_ON_NODE"])
+except:
+    N_PROC=14
+
+# ells to generate
+# TODO: Move this to a better spot
+ells = [0, 2]
 
 # fraction of dataset to be partitioned to the training | validation | test sets
 train_frac = 0.8
@@ -46,12 +52,11 @@ def prepare_header_info(param_names, fiducial_cosmology, n_samples):
 
 def get_power_spectrum(sample, k, param_names, cosmo_dict, ps_config):
 
-    ells = [0, 2]
-    num_samples = ps_config['number_density_table'].shape[0]
+    num_tracers = ps_config['number_density_table'].shape[0]
     num_zbins = len(ps_config["redshift_list"])
     sample_dict = dict(zip(param_names, sample))
 
-    param_vector = prepare_ps_inputs(sample_dict, cosmo_dict, num_samples, num_zbins)
+    param_vector = prepare_ps_inputs(sample_dict, cosmo_dict, num_tracers, num_zbins)
     try:
         theory = ps_theory_calculator.PowerSpectrumMultipole1Loop(ps_config)
         galaxy_ps = theory(k, ells, param_vector) / cosmo_dict["cosmo_params"]["h"]["value"]**3
@@ -101,25 +106,25 @@ def main():
     param_names, param_ranges = get_parameter_ranges(cosmo_dict)
     samples = make_latin_hypercube(param_ranges, N)
 
-    print("Generating", str(N), "power spectra with", str(N_PROC), "processors...")
     print("Number of samples:", ps_config['number_density_table'].shape[0])
     print("Number of redshift bins:", len(ps_config["redshift_list"]))
     print("Number of varied parameters:", len(param_names),':', param_names)
     print("Saving to", save_dir)
 
+
     # first, generate the power spectrum at the fiducial cosmology
     print("Generating fiducial power spectrum...")
-    pk, result = get_power_spectrum({}, param_names, cosmo_dict, ps_config)
+    pk, result = get_power_spectrum({}, k, param_names, cosmo_dict, ps_config)
     if result == 0:
         np.save(save_dir+"ps_fid.npy", pk)
-        np.save(save_dir+"kbins.npz", k=k)
+        np.savez(save_dir+"kbins.npz", k=k)
     else:
         print("ERROR! failed to calculate fiducial power spectrum! Exiting...")
         return -1
 
     # # initialize pool for multiprocessing
     t1 = time.time()
-    print("Generating training set...")
+    print("Generating", str(N), "power spectra with", str(N_PROC), "processors...")
     p = Pool(processes=N_PROC)
     pk, result = zip(*p.starmap(get_power_spectrum, 
                       zip(samples, repeat(k), repeat(param_names), repeat(cosmo_dict), repeat(ps_config))))

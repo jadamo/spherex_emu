@@ -5,8 +5,8 @@ import itertools
 
 import spherex_emu.models.blocks as blocks
 
-class single_transformer(nn.Module):
-    """Class defining a single independent transformer network"""
+class single_mlp(nn.Module):
+    """Class defining a single independent mlp network"""
 
     def __init__(self, config_dict, is_cross_spectra:bool):
         """Initializes an individual network, responsible for outputting a portion of the full model vector. The user is not meant to call this function directly.
@@ -21,14 +21,14 @@ class single_transformer(nn.Module):
         # TODO: Allow specification of activation function        
         self.num_ells = config_dict["num_ells"]
         self.num_kbins = config_dict["num_kbins"]
-        self.num_nuisance_params = config_dict["num_nuisance_params"]
+        self.num_bias_params = config_dict["num_bias_params"]
 
         # size of input depends on wether or not the network is for the crosss spectra
         self.is_cross_spectra = is_cross_spectra
         if not is_cross_spectra:
-            self.input_dim = config_dict["num_cosmo_params"] + config_dict["num_nuisance_params"]
+            self.input_dim = config_dict["num_cosmo_params"] + config_dict["num_bias_params"]
         else:
-            self.input_dim = config_dict["num_cosmo_params"] + (2 * config_dict["num_nuisance_params"])
+            self.input_dim = config_dict["num_cosmo_params"] + (2 * config_dict["num_bias_params"])
         self.output_dim = self.num_ells * self.num_kbins
 
         # mlp blocks
@@ -40,42 +40,26 @@ class single_transformer(nn.Module):
                                         config_dict["mlp_dims"][i+1],
                                         config_dict["num_block_layers"],
                                         config_dict["use_skip_connection"]))
-        
-        # expand mlp section output
-        split_dim = config_dict["split_dim"]
-        split_size = config_dict["split_size"]
-        embedding_dim = split_size*split_dim
-        self.embedding_layer = nn.Linear(config_dict["mlp_dims"][-1], embedding_dim)
 
-        # do one transformer block per z-bin for now
-        self.transformer_blocks = nn.Sequential()
-        for i in range(config_dict["num_transformer_blocks"]):
-            self.transformer_blocks.add_module("Transformer"+str(i+1),
-                    blocks.block_transformer_encoder(embedding_dim, split_dim, 0.1))
-            self.transformer_blocks.add_module("Activation"+str(i+1), 
-                    blocks.activation_function(embedding_dim))
-
-        self.output_layer = nn.Linear(embedding_dim, self.output_dim)
+        self.output_layer = nn.Linear(config_dict["mlp_dims"][-1], self.output_dim)
 
     def forward(self, input_params):
         """Passes an input tensor through the network"""
 
         if not self.is_cross_spectra:
-            input_params = input_params[:, :-self.num_nuisance_params]
+            input_params = input_params[:, :-self.num_bias_params]
         
         X = self.input_layer(input_params)
         X = self.mlp_blocks(X)
-        X = self.embedding_layer(X)
-        X = self.transformer_blocks(X)
         X = self.output_layer(X)
 
         return X
 
-class stacked_transformer(nn.Module):
-    """Class defining a stack of single_transformer objects, one for each portion of the power spectrum output"""
+class stacked_mlp(nn.Module):
+    """Class defining a stack of single_mlp objects, one for each portion of the power spectrum output"""
 
     def __init__(self, config_dict):
-        """Initializes a group of single_transformer based on the input dictionary.
+        """Initializes a group of single_mlp based on the input dictionary.
         
         This function creates nz*nps total networks, where nz is the number of redshift bins, and nps
         is the number of auto + cross power spectra per redshift bin.
@@ -92,30 +76,30 @@ class stacked_transformer(nn.Module):
         self.num_ells = config_dict["num_ells"]
         self.num_kbins = config_dict["num_kbins"]
 
-        self.num_cosmo_params    = config_dict["num_cosmo_params"]
-        self.num_nuisance_params = config_dict["num_nuisance_params"]
+        self.num_cosmo_params = config_dict["num_cosmo_params"]
+        self.num_bias_params = config_dict["num_bias_params"]
 
         # Stores networks sequentially in a list
         self.networks = nn.ModuleList()
         for z in range(self.num_zbins):
             for isample1, isample2 in itertools.product(range(self.num_tracers), repeat=2):
                 if isample1 > isample2: continue
-                self.networks.append(single_transformer(config_dict, (isample1 != isample2)))
+                self.networks.append(single_mlp(config_dict, (isample1 != isample2)))
 
     def organize_parameters(self, input_params):
         """Organizes input cosmology + bias parameters into a form the rest of the network expects
         
         Args:
-            input_params: tensor of input parameters with shape [batch, num_cosmo_params*(num_nuisance_params*num_zbins*num_tracers)]
+            input_params: tensor of input parameters with shape [batch, num_cosmo_params*(num_bias_params*num_zbins*num_tracers)]
         Returns:
-            organized_params: tensor of input parameters with shape [batch, num_spectra*num_zbins, num_cosmo_params + (2*self.num_nuisance_params)].
+            organized_params: tensor of input parameters with shape [batch, num_spectra*num_zbins, num_cosmo_params + (2*self.num_bias_params)].
                 The bias parameters are split corresponding to their respective redshift / tracer bin
         """
 
-        # parameters shape is (b, nz*nps, num_cosmo*2*num_nuisance)
+        # parameters shape is (b, nz*nps, num_cosmo*2*num_bias)
         organized_params = torch.zeros((input_params.shape[0],
                                        self.num_spectra * self.num_zbins, 
-                                       self.num_cosmo_params + (2*self.num_nuisance_params)),
+                                       self.num_cosmo_params + (2*self.num_bias_params)),
                                        device=input_params.device)
 
         # fill cosmology parameters (the same for every bin)
@@ -131,9 +115,9 @@ class stacked_transformer(nn.Module):
                 idx_2 = (z*self.num_tracers) + isample2
                 iterate = self.num_tracers*self.num_zbins
 
-                organized_params[:, iter, self.num_cosmo_params:self.num_cosmo_params+self.num_nuisance_params] \
+                organized_params[:, iter, self.num_cosmo_params:self.num_cosmo_params+self.num_bias_params] \
                     = input_params[:, self.num_cosmo_params+idx_1::iterate]
-                organized_params[:, iter, self.num_cosmo_params+self.num_nuisance_params:self.num_cosmo_params+2*self.num_nuisance_params] \
+                organized_params[:, iter, self.num_cosmo_params+self.num_bias_params:self.num_cosmo_params+2*self.num_bias_params] \
                     = input_params[:, self.num_cosmo_params+idx_2::iterate]
                 iter+=1
 
