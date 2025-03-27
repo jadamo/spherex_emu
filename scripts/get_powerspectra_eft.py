@@ -29,12 +29,11 @@ def main():
     k = k_data["k"]
     ells = [0, 2]
 
-    print(param_vector)
     theory = ps_theory_calculator.PowerSpectrumMultipole1Loop(ps_config)
     galaxy_ps = theory(k, ells, param_vector) / cosmo_dict["cosmo_params"]["h"]["value"]**3
 
     print(galaxy_ps.shape)
-    save_str = '/home/joeadamo/Research/SPHEREx/covapt_mt/data/input_data/emulator/galaxy_ps.npy'
+    save_str = '/home/joeadamo/Research/Data/SPHEREx-Data/ps_camb.npy'
     print("saving to: ", save_str)
     np.save(save_str, galaxy_ps)
 

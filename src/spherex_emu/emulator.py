@@ -5,8 +5,7 @@ import yaml, math, os, time
 import itertools
 
 from spherex_emu.models import blocks
-from spherex_emu.models.mlp import mlp
-from spherex_emu.models.transformer import transformer
+from spherex_emu.models.stacked_mlp import stacked_mlp
 from spherex_emu.models.stacked_transformer import stacked_transformer
 from spherex_emu.dataset import pk_galaxy_dataset
 from spherex_emu.utils import load_config_file, calc_avg_loss, get_parameter_ranges,\
@@ -29,7 +28,7 @@ class pk_emulator():
 
         Raises:
             KeyError: if mode is not correctly specified
-            IOError: if no config.yaml file was found
+            IOError: if no input yaml file was found
         """
         if net_dir.endswith(".yaml"): self.config_dict = load_config_file(net_dir)
         else:                         self.config_dict = load_config_file(net_dir+"config.yaml")
@@ -211,10 +210,8 @@ class pk_emulator():
     def _init_model(self):
         """Initializes the network"""
         self.num_spectra = self.num_tracers + math.comb(self.num_tracers, 2)
-        if self.model_type == "mlp":
-            self.model = mlp(self.config_dict).to(self.device)
-        elif self.model_type == "transformer":
-            self.model = transformer(self.config_dict, self.device).to(self.device)
+        if self.model_type == "stacked_mlp":
+            self.model = stacked_mlp(self.config_dict).to(self.device)
         elif self.model_type == "stacked_transformer":
             self.model = stacked_transformer(self.config_dict).to(self.device)
         else:

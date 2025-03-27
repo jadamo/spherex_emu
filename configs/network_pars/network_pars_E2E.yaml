@@ -1,4 +1,3 @@
-
 # directory that all other paths are relative to
 input_dir: /home/joeadamo/Research/SPHEREx/spherex_emu/
 # file paths are relative w.r.t. the repository directory
@@ -20,14 +19,15 @@ num_zbins   : 2
 num_ells    : 2
 num_kbins   : 25
 
+# mlp parameters
 # specifications are for each network - will be repeated for each sample / redshift bin
 num_mlp_blocks      : 2
 # mlp_dims should be num_mlp_blocks+1 long
 mlp_dims            : [50, 50, 50]
 num_block_layers    : 5
-use_batchnorm       : False
 use_skip_connection : True
 
+# transformer parameters
 num_transformer_blocks : 1
 split_dim              : 5
 split_size             : 20
@@ -36,10 +36,11 @@ split_size             : 20
 num_epochs: 400
 learning_rate: 0.005
 batch_size: 250
-training_set_fraction : 0.2
+training_set_fraction : 0.25
 early_stopping_epochs: 25
 weight_initialization: He
 optimizer_type : Adam
+
 # whether to re-calculate the training-set loss at the end of each epoch
 # Setting to true gives more accurate loss stats, but is slower
 # Validation set loss is not changed by this option

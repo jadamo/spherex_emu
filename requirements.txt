@@ -1,8 +1,0 @@
-camb @ git+https://github.com/cmbant/CAMB@dec68f121844a0940fadb828c54fc995241095f8
-easydict==1.13
-matplotlib==3.7.2
-numpy==1.25.2
-pyDOE==0.3.8
-scipy==1.11.2
-setuptools==70.0.0
-torch==2.2.2

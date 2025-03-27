@@ -31,13 +31,13 @@ def get_parameter_ranges(cosmo_dict):
             cosmo_params[param] = [cosmo_dict["cosmo_params"][param]["prior"]["min"],
                                    cosmo_dict["cosmo_params"][param]["prior"]["max"]]
 
-    bias_params = {}
-    for param in cosmo_dict["bias_params"]:
-        if "prior" in cosmo_dict["bias_params"][param]:
-            cosmo_params[param] = [cosmo_dict["bias_params"][param]["prior"]["min"],
-                                   cosmo_dict["bias_params"][param]["prior"]["max"]]
+    nuisance_params = {}
+    for param in cosmo_dict["nuisance_params"]:
+        if "prior" in cosmo_dict["nuisance_params"][param]:
+            nuisance_params[param] = [cosmo_dict["nuisance_params"][param]["prior"]["min"],
+                                      cosmo_dict["nuisance_params"][param]["prior"]["max"]]
 
-    params_dict = {**cosmo_params, **bias_params}
+    params_dict = {**cosmo_params, **nuisance_params}
     priors = np.array(list(params_dict.values()))
     params = list(params_dict.keys())
     return params, priors
@@ -57,22 +57,24 @@ def prepare_ps_inputs(sample, cosmo_dict, num_spectra, num_zbins):
     for isample in range(num_spectra):
         for iz in range(num_zbins):
             sub_vector = []
-            for pname in list(cosmo_dict["bias_param_names"]):
+            for pname in list([cosmo_dict["bias_param_names"], 
+                               cosmo_dict["counterterm_param_names"],
+                               cosmo_dict["stochastic_param_names"]]):
                 key = pname+"_"+str(isample)+"_"+str(iz)
 
                 if key in sample:
                     sub_vector.append(sample[key])
                 elif pname in sample:
                     sub_vector.append(sample[pname])
-                elif key in cosmo_dict["bias_params"]:
-                    sub_vector.append(cosmo_dict["bias_params"][key]["value"])
+                elif key in cosmo_dict["nuisance_params"]:
+                    sub_vector.append(cosmo_dict["nuisance_params"][key]["value"])
                 # special cases when bias parameters depend on other bias parameter values (TNS model)
-                elif pname == "bs2" and cosmo_dict["bias_params"][pname]["value"] == -99:
-                    sub_vector.append((-4./7)*(cosmo_dict["bias_params"]["b1"+"_"+str(isample)+"_"+str(iz)]["value"]-1))
-                elif pname == "b3nl" and cosmo_dict["bias_params"][pname]["value"] == -99:
-                    sub_vector.append((32./315)*(cosmo_dict["bias_params"]["b1"+"_"+str(isample)+"_"+str(iz)]["value"]-1))
+                elif pname == "bs2" and cosmo_dict["nuisance_params"][pname]["value"] == -99:
+                    sub_vector.append((-4./7)*(cosmo_dict["nuisance_params"]["b1"+"_"+str(isample)+"_"+str(iz)]["value"]-1))
+                elif pname == "b3nl" and cosmo_dict["nuisance_params"][pname]["value"] == -99:
+                    sub_vector.append((32./315)*(cosmo_dict["nuisance_params"]["b1"+"_"+str(isample)+"_"+str(iz)]["value"]-1))
                 else:
-                    sub_vector.append(cosmo_dict["bias_params"][pname]["value"])
+                    sub_vector.append(cosmo_dict["nuisance_params"][pname]["value"])
             param_vector += sub_vector
 
     return np.array(param_vector)
@@ -234,7 +236,7 @@ def delta_chi_squared(predict, target, invcov, normalized=False):
 
 
 def calc_avg_loss(net, data_loader, input_normalizations, 
-                  ps_fid, invcov_blocks, sqrt_eigvals, Q, Q_inv, loss_function, bin_idx=None):
+                  ps_fid, invcov, sqrt_eigvals, Q, Q_inv, loss_function, bin_idx=None):
     """run thru the given data set and returns the average loss value"""
 
     # if net_idx not specified, recursively call the function with all possible values
@@ -242,7 +244,7 @@ def calc_avg_loss(net, data_loader, input_normalizations,
         total_loss = torch.zeros(net.num_spectra, net.num_zbins, requires_grad=False)
         for (ps, z) in itertools.product(range(net.num_spectra), range(net.num_zbins)):
             total_loss[ps, z] = calc_avg_loss(net, data_loader, input_normalizations, 
-                                ps_fid, invcov_blocks, sqrt_eigvals, Q, Q_inv, loss_function, [ps, z])
+                                ps_fid, invcov, sqrt_eigvals, Q, Q_inv, loss_function, [ps, z])
         return total_loss
     
     net.eval()
@@ -255,7 +257,7 @@ def calc_avg_loss(net, data_loader, input_normalizations,
             prediction = net(params, net_idx)
             target = torch.flatten(batch[1][:,bin_idx[0],bin_idx[1]], start_dim=1)
 
-            avg_loss += loss_function(prediction, target, invcov_blocks, True).item()
+            avg_loss += loss_function(prediction, target, invcov, True).item()
 
     return avg_loss / len(data_loader)
 
