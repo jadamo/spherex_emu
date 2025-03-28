@@ -8,13 +8,13 @@ save_dir: ./emulators/stacked_transformer_test/
 training_dir: ../../Data/SPHEREx-Data/Training-Set-EFT-2s-2z/
 # Location of config file with cosmology + bias parameters
 # This file contains all of the parameter ranges
-cosmo_dir : ./configs/cosmo_pars/eft_2_tracer_2_redshift.yaml
+cosmo_dir : ./configs/cosmo_pars/cosmo_pars_example.yaml
 
 model_type : stacked_transformer
 loss_type : hyperbolic_chi2
 
-num_cosmo_params : 3
-num_bias_params : 6
+num_cosmo_params    : 4
+num_nuisance_params : 6
 num_tracers : 2
 num_zbins   : 2
 num_ells    : 2

@@ -42,7 +42,7 @@ def get_parameter_ranges(cosmo_dict):
     params = list(params_dict.keys())
     return params, priors
 
-def prepare_ps_inputs(sample, cosmo_dict, num_spectra, num_zbins):
+def prepare_ps_inputs(sample, cosmo_dict, num_tracers, num_zbins):
     """takes a set of parameters and oragnizes them to the format expected by ps_1loop"""
     param_vector = []
     # fill in cosmo params in the order ps_1loop expects
@@ -54,7 +54,7 @@ def prepare_ps_inputs(sample, cosmo_dict, num_spectra, num_zbins):
             param_vector.append(cosmo_dict["cosmo_params"][pname]["value"])
 
     # fill in bias params
-    for isample in range(num_spectra):
+    for isample in range(num_tracers):
         for iz in range(num_zbins):
             sub_vector = []
             for pname in list(cosmo_dict["bias_param_names"] + 
@@ -151,8 +151,7 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
 
     if remove_old_files == True:
         for file in all_filenames:
-            if "CovA-" in file:
-                os.remove(training_dir+file)
+            os.remove(training_dir+file)
 
     print("splitting dataset into chunks of size [{:0.0f}, {:0.0f}, {:0.0f}]...".format(N_train, N_valid, N_test))
 
