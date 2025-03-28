@@ -21,14 +21,14 @@ class single_mlp(nn.Module):
         # TODO: Allow specification of activation function        
         self.num_ells = config_dict["num_ells"]
         self.num_kbins = config_dict["num_kbins"]
-        self.num_bias_params = config_dict["num_bias_params"]
+        self.num_nuisance_params = config_dict["num_nuisance_params"]
 
         # size of input depends on wether or not the network is for the crosss spectra
         self.is_cross_spectra = is_cross_spectra
         if not is_cross_spectra:
-            self.input_dim = config_dict["num_cosmo_params"] + config_dict["num_bias_params"]
+            self.input_dim = config_dict["num_cosmo_params"] + config_dict["num_nuisance_params"]
         else:
-            self.input_dim = config_dict["num_cosmo_params"] + (2 * config_dict["num_bias_params"])
+            self.input_dim = config_dict["num_cosmo_params"] + (2 * config_dict["num_nuisance_params"])
         self.output_dim = self.num_ells * self.num_kbins
 
         # mlp blocks
@@ -47,7 +47,7 @@ class single_mlp(nn.Module):
         """Passes an input tensor through the network"""
 
         if not self.is_cross_spectra:
-            input_params = input_params[:, :-self.num_bias_params]
+            input_params = input_params[:, :-self.num_nuisance_params]
         
         X = self.input_layer(input_params)
         X = self.mlp_blocks(X)
@@ -70,14 +70,14 @@ class stacked_mlp(nn.Module):
         super().__init__()
 
         # output dimensions
-        self.num_zbins = config_dict["num_zbins"]
-        self.num_spectra = config_dict["num_tracers"] +  math.comb(config_dict["num_tracers"], 2)
         self.num_tracers = config_dict["num_tracers"]
+        self.num_spectra = config_dict["num_tracers"] +  math.comb(config_dict["num_tracers"], 2)
+        self.num_zbins = config_dict["num_zbins"]
         self.num_ells = config_dict["num_ells"]
         self.num_kbins = config_dict["num_kbins"]
 
         self.num_cosmo_params = config_dict["num_cosmo_params"]
-        self.num_bias_params = config_dict["num_bias_params"]
+        self.num_nuisance_params = config_dict["num_nuisance_params"]
 
         # Stores networks sequentially in a list
         self.networks = nn.ModuleList()
@@ -90,16 +90,16 @@ class stacked_mlp(nn.Module):
         """Organizes input cosmology + bias parameters into a form the rest of the network expects
         
         Args:
-            input_params: tensor of input parameters with shape [batch, num_cosmo_params*(num_bias_params*num_zbins*num_tracers)]
+            input_params: tensor of input parameters with shape [batch, num_cosmo_params*(num_nuisance_params*num_zbins*num_tracers)]
         Returns:
-            organized_params: tensor of input parameters with shape [batch, num_spectra*num_zbins, num_cosmo_params + (2*self.num_bias_params)].
+            organized_params: tensor of input parameters with shape [batch, num_spectra*num_zbins, num_cosmo_params + (2*self.num_nuisance_params)].
                 The bias parameters are split corresponding to their respective redshift / tracer bin
         """
 
-        # parameters shape is (b, nz*nps, num_cosmo*2*num_bias)
+        # parameters shape is (b, nz*nps, num_cosmo*2*num_nuisance)
         organized_params = torch.zeros((input_params.shape[0],
                                        self.num_spectra * self.num_zbins, 
-                                       self.num_cosmo_params + (2*self.num_bias_params)),
+                                       self.num_cosmo_params + (2*self.num_nuisance_params)),
                                        device=input_params.device)
 
         # fill cosmology parameters (the same for every bin)
@@ -115,9 +115,9 @@ class stacked_mlp(nn.Module):
                 idx_2 = (z*self.num_tracers) + isample2
                 iterate = self.num_tracers*self.num_zbins
 
-                organized_params[:, iter, self.num_cosmo_params:self.num_cosmo_params+self.num_bias_params] \
+                organized_params[:, iter, self.num_cosmo_params:self.num_cosmo_params+self.num_nuisance_params] \
                     = input_params[:, self.num_cosmo_params+idx_1::iterate]
-                organized_params[:, iter, self.num_cosmo_params+self.num_bias_params:self.num_cosmo_params+2*self.num_bias_params] \
+                organized_params[:, iter, self.num_cosmo_params+self.num_nuisance_params:self.num_cosmo_params+2*self.num_nuisance_params] \
                     = input_params[:, self.num_cosmo_params+idx_2::iterate]
                 iter+=1
 

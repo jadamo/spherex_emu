@@ -25,8 +25,8 @@ counterterm_param_names:
   - counterterm_fog
 stochastic_param_names:
   - P_shot
-  - a0
-  - a2
+  - stochasticity_a0
+  - stochasticity_a2
 
 cosmo_params:
   h: 
@@ -196,7 +196,7 @@ nuisance_params:
   # Yosuke's code automatically calulates P_shot = 1/n, so should be set to 1 for now
   P_shot:
     value: 0
-  a0:
+  stochasticity_a0:
     value: 0
-  a2:
+  stochasticity_a2:
     value: 0
