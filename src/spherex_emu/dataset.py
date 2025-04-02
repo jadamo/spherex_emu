@@ -29,7 +29,7 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
 
         header_info = load_config_file(data_dir+"info.yaml")
         self.cosmo_params = header_info["cosmo_params"]
-        self.bias_params = header_info["bias_params"]
+        self.bias_params = header_info["nuisance_params"]
 
         # TODO: change training set script such that we can remove this line
         self.pk = torch.permute(self.pk, (0, 2, 1, 4, 3))

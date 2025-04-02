@@ -2,9 +2,9 @@
 input_dir: /home/joeadamo/Research/SPHEREx/spherex_emu/
 # file paths are relative w.r.t. the repository directory
 # Where to save the network
-save_dir: ./emulators/stacked_transformer_test/
+save_dir: ./emulators/stacked_transformer_paper_run/
 # Where your training set lives
-training_dir: ../../Data/SPHEREx-Data/Training-Set-EFT-2s-2z/
+training_dir: ../../Data/SPHEREx-Data/training_set_eft_2t_2z/
 # Location of config file with cosmology + bias parameters
 # This file contains all of the parameter ranges
 cosmo_dir : ./configs/cosmo_pars/cosmo_pars_example.yaml
