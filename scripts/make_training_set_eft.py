@@ -60,12 +60,17 @@ def get_power_spectrum(sample, k, param_names, cosmo_dict, ps_config):
     try:
         theory = ps_theory_calculator.PowerSpectrumMultipole1Loop(ps_config)
         galaxy_ps = theory(k, ells, param_vector) / cosmo_dict["cosmo_params"]["h"]["value"]**3
+        galaxy_ps = np.transpose(galaxy_ps, (1, 0, 3, 2))
 
-        if not np.any(np.isnan(galaxy_ps)): return galaxy_ps, 0
-        else: return np.zeros(len(ells), len(k)), -1
+        if not np.any(np.isnan(galaxy_ps)) and \
+           not np.any(np.isinf(galaxy_ps)): 
+            return galaxy_ps, 0
+        else: 
+            print("Power spectrum calculation failed!")
+            return np.zeros_like(galaxy_ps), -1
     except:
         print("Power spectrum calculation failed!")
-        return np.zeros(len(ells), len(k)), -1
+        return np.zeros_like(galaxy_ps), -1
 
 #-------------------------------------------------------------------
 # MAIN
@@ -156,7 +161,7 @@ def main():
     print("{:0.0f} ({:0.2f}%) power spectra failed to compute".format(fail_compute, 100.*fail_compute / N))
 
     organize_training_set(save_dir, train_frac, valid_frac, test_frac,
-                          samples.shape[1], len(z_eff), num_spectra, 2, len(k), True)
+                          samples.shape[1], len(z_eff), num_spectra, len(ells), len(k), True)
 
 if __name__ == "__main__":
     main()

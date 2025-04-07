@@ -105,7 +105,7 @@ def make_latin_hypercube(priors, N):
 
 
 def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, test_frac:float, 
-                          param_dim, num_zbins, num_tracers, num_ells, k_dim, remove_old_files=True):
+                          param_dim, num_zbins, num_spectra, num_ells, k_dim, remove_old_files=True):
     """Takes a set of matrices and reorganizes them into training, validation, and tests sets
     
     Args:
@@ -121,7 +121,7 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
     all_filenames = next(os.walk(training_dir), (None, None, []))[2]  # [] if no file
 
     all_params = np.array([], dtype=np.int64).reshape(0,param_dim)
-    all_pk = np.array([], dtype=np.int64).reshape(0, num_zbins, num_tracers, num_ells, k_dim)
+    all_pk = np.array([], dtype=np.int64).reshape(0, num_spectra, num_zbins, k_dim, num_ells)
 
     # load in all the data internally (NOTE: memory intensive!)
     if "pk-raw.npz" in all_filenames:

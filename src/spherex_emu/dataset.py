@@ -32,7 +32,7 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self.bias_params = header_info["nuisance_params"]
 
         # TODO: change training set script such that we can remove this line
-        self.pk = torch.permute(self.pk, (0, 2, 1, 4, 3))
+        #self.pk = torch.permute(self.pk, (0, 2, 1, 4, 3))
 
         self.num_spectra = self.pk.shape[1]
         self.num_zbins   = self.pk.shape[2]
