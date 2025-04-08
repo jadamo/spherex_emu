@@ -12,7 +12,7 @@ cosmo_dir : ./configs/cosmo_pars/cosmo_pars_example.yaml
 model_type : stacked_transformer
 loss_type : hyperbolic_chi2
 
-num_cosmo_params    : 4
+num_cosmo_params    : 5
 num_nuisance_params : 6
 num_tracers : 2
 num_zbins   : 2
@@ -28,7 +28,7 @@ num_block_layers    : 5
 use_skip_connection : True
 
 # transformer parameters
-num_transformer_blocks : 1
+num_transformer_blocks : 2
 split_dim              : 5
 split_size             : 20
 
@@ -36,7 +36,7 @@ split_size             : 20
 num_epochs: 400
 learning_rate: 0.005
 batch_size: 250
-training_set_fraction : 0.25
+training_set_fraction : 1.
 early_stopping_epochs: 25
 weight_initialization: He
 optimizer_type : Adam
