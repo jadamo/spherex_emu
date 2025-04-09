@@ -102,8 +102,8 @@ class pk_emulator():
 
         if key in ["training", "validation", "testing"]:
             data = pk_galaxy_dataset(dir, key, data_frac)
-            data.normalize_data(self.ps_fid, self.sqrt_eigvals, self.Q)
             data.to(self.device)
+            data.normalize_data(self.ps_fid, self.sqrt_eigvals, self.Q)
             data_loader = torch.utils.data.DataLoader(data, batch_size=self.config_dict["batch_size"], shuffle=True)
         
             if return_dataloader: return data_loader
