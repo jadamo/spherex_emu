@@ -5,7 +5,6 @@ import time, math, yaml, sys
 import numpy as np
 from mpi4py import MPI
 
-from multiprocessing import Pool
 from itertools import repeat
 
 import ps_theory_calculator
@@ -15,11 +14,7 @@ from spherex_emu.utils import *
 # GLOBAL VARIABLES
 #-------------------------------------------------------------------
 
-N = 48
-try:
-    N_PROC=int(os.environ["SLURM_CPUS_ON_NODE"])
-except:
-    N_PROC=6
+N = 8
 
 # ells to generate
 # TODO: Move this to a better spot
@@ -51,40 +46,47 @@ def prepare_header_info(param_names, fiducial_cosmology, n_samples):
     header_info["nuisance_params"] = bias_params
     return header_info
 
-def get_power_spectrum(sample, k, param_names, cosmo_dict, ps_config):
+def get_power_spectrum(samples, k, param_names, cosmo_dict, ps_config):
 
     num_tracers = ps_config['number_density_table'].shape[0]
+    num_spectra = num_tracers + math.comb(num_tracers, 2)
     num_zbins = len(ps_config["redshift_list"])
-    sample_dict = dict(zip(param_names, sample))
 
-    param_vector = prepare_ps_inputs(sample_dict, cosmo_dict, num_tracers, num_zbins)
-    try:
-        theory = ps_theory_calculator.PowerSpectrumMultipole1Loop(ps_config)
-        galaxy_ps = theory(k, ells, param_vector) / cosmo_dict["cosmo_params"]["h"]["value"]**3
-        galaxy_ps = np.transpose(galaxy_ps, (1, 0, 3, 2))
+    num_to_calculate = len(samples)
+    galaxy_ps = np.zeros((num_to_calculate, num_spectra, num_zbins, len(k), len(ells)))
+    result = np.zeros(num_to_calculate)
 
-        if not np.any(np.isnan(galaxy_ps)) and \
-           not np.any(np.isinf(galaxy_ps)): 
-            return galaxy_ps, 0
-        else: 
+    for idx in range(num_to_calculate):
+        sample_dict = dict(zip(param_names, samples[idx]))
+        param_vector = prepare_ps_inputs(sample_dict, cosmo_dict, num_tracers, num_zbins)
+        try:
+            theory = ps_theory_calculator.PowerSpectrumMultipole1Loop(ps_config)
+            ps = theory(k, ells, param_vector) / cosmo_dict["cosmo_params"]["h"]["value"]**3
+            ps = np.transpose(ps, (1, 0, 3, 2))
+
+            if not np.any(np.isnan(ps)) and \
+            not np.any(np.isinf(ps)): 
+                galaxy_ps[idx] = ps
+            else: 
+                print("Power spectrum calculation failed!")
+                result[idx] = -1
+        except:
             print("Power spectrum calculation failed!")
-            return np.zeros_like(galaxy_ps), -1
-    except:
-        print("Power spectrum calculation failed!")
-        return np.zeros_like(galaxy_ps), -1
+            result[idx] = -1
 
+    return galaxy_ps, result
 #-------------------------------------------------------------------
 # MAIN
 #-------------------------------------------------------------------
 def main():
 
-    if len(sys.argv) < 5:
-        print("USAGE: python make_training_set_eft.py <cosmo_config_file> <survey_config_file> <save_dir> <k array file>")
-        return -1
-
     comm = MPI.COMM_WORLD
     size = MPI.COMM_WORLD.Get_size()
     rank = MPI.COMM_WORLD.Get_rank()
+
+    if len(sys.argv) < 5:
+        if rank == 0: print("USAGE: python make_training_set_eft.py <cosmo_config_file> <survey_config_file> <save_dir> <k array file>")
+        return -1
 
     cosmo_config_file  = sys.argv[1]
     survey_config_file = sys.argv[2]
@@ -136,7 +138,7 @@ def main():
 
         # first, generate the power spectrum at the fiducial cosmology
         print("Generating fiducial power spectrum...")
-        pk, result = get_power_spectrum({}, k, param_names, cosmo_dict, ps_config)
+        pk, result = get_power_spectrum([{}], k, param_names, cosmo_dict, ps_config)
         if result == 0:
             np.save(save_dir+"ps_fid.npy", pk)
             np.savez(save_dir+"kbins.npz", k=k)
@@ -146,12 +148,9 @@ def main():
 
     # # initialize pool for multiprocessing
     t1 = time.time()
-    print("Rank,", str(rank), "Generating", str(int(N/size)), "power spectra with", str(N_PROC), "processors...")
-    p = Pool(processes=N_PROC)
-    pk, result = zip(*p.starmap(get_power_spectrum, 
-                      zip(rank_samples, repeat(k), repeat(param_names), repeat(cosmo_dict), repeat(ps_config))))
-    p.close()
-    p.join()
+    if rank == 0: print("Generating", str(int(N)), "power spectra across", str(size), "processors ("+str(int(N / size))+" per processor)...")
+
+    pk, result = get_power_spectrum(rank_samples, k, param_names, cosmo_dict, ps_config)
 
     # aggregate data
     pk = np.array(pk)
