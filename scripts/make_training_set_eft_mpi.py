@@ -3,6 +3,7 @@
 
 import time, math, yaml, sys
 import numpy as np
+from mpi4py import MPI
 
 from multiprocessing import Pool
 from itertools import repeat
@@ -14,11 +15,11 @@ from spherex_emu.utils import *
 # GLOBAL VARIABLES
 #-------------------------------------------------------------------
 
-N = 2000000
+N = 48
 try:
     N_PROC=int(os.environ["SLURM_CPUS_ON_NODE"])
 except:
-    N_PROC=14
+    N_PROC=6
 
 # ells to generate
 # TODO: Move this to a better spot
@@ -79,7 +80,11 @@ def main():
 
     if len(sys.argv) < 5:
         print("USAGE: python make_training_set_eft.py <cosmo_config_file> <survey_config_file> <save_dir> <k array file>")
-        return 0
+        return -1
+
+    comm = MPI.COMM_WORLD
+    size = MPI.COMM_WORLD.Get_size()
+    rank = MPI.COMM_WORLD.Get_rank()
 
     cosmo_config_file  = sys.argv[1]
     survey_config_file = sys.argv[2]
@@ -109,30 +114,42 @@ def main():
     ps_config['Omega_m_ref'] = 0.3 # Omega_m value of the reference cosmology (assuming a flat LambdaCDM)
 
     param_names, param_ranges = get_parameter_ranges(cosmo_dict)
-    samples = make_latin_hypercube(param_ranges, N)
+    num_params = len(param_names)
 
-    print("Number of samples:", ps_config['number_density_table'].shape[0])
-    print("Number of redshift bins:", len(ps_config["redshift_list"]))
-    print("Number of varied parameters:", len(param_names),':', param_names)
-    print("Saving to", save_dir)
+    # Split up samples to multiple MPI ranks
+    if rank == 0: all_samples = make_latin_hypercube(param_ranges, N)
+    else:         all_samples = np.zeros((N, num_params))
+    comm.Barrier()
+    comm.Bcast(all_samples, root=0)
 
+    assert N % size == 0
+    offset = int((N / size) * rank)
+    data_len = int(N / size)
+    rank_samples = all_samples[offset:offset+data_len,:]
+    assert rank_samples.shape[0] == data_len
 
-    # first, generate the power spectrum at the fiducial cosmology
-    print("Generating fiducial power spectrum...")
-    pk, result = get_power_spectrum({}, k, param_names, cosmo_dict, ps_config)
-    if result == 0:
-        np.save(save_dir+"ps_fid.npy", pk)
-        np.savez(save_dir+"kbins.npz", k=k)
-    else:
-        print("ERROR! failed to calculate fiducial power spectrum! Exiting...")
-        return -1
+    if rank == 0:
+        print("Number of samples:", ps_config['number_density_table'].shape[0])
+        print("Number of redshift bins:", len(ps_config["redshift_list"]))
+        print("Number of varied parameters:", len(param_names),':', param_names)
+        print("Saving to", save_dir)
+
+        # first, generate the power spectrum at the fiducial cosmology
+        print("Generating fiducial power spectrum...")
+        pk, result = get_power_spectrum({}, k, param_names, cosmo_dict, ps_config)
+        if result == 0:
+            np.save(save_dir+"ps_fid.npy", pk)
+            np.savez(save_dir+"kbins.npz", k=k)
+        else:
+            print("ERROR! failed to calculate fiducial power spectrum! Exiting...")
+            return -1
 
     # # initialize pool for multiprocessing
     t1 = time.time()
-    print("Generating", str(N), "power spectra with", str(N_PROC), "processors...")
+    print("Rank,", str(rank), "Generating", str(int(N/size)), "power spectra with", str(N_PROC), "processors...")
     p = Pool(processes=N_PROC)
     pk, result = zip(*p.starmap(get_power_spectrum, 
-                      zip(samples, repeat(k), repeat(param_names), repeat(cosmo_dict), repeat(ps_config))))
+                      zip(rank_samples, repeat(k), repeat(param_names), repeat(cosmo_dict), repeat(ps_config))))
     p.close()
     p.join()
 
@@ -144,24 +161,28 @@ def main():
     fail_compute = len(np.where(result == -1)[0])
 
     pk = pk[idx_pass]
-    samples = samples[idx_pass]
+    rank_samples = rank_samples[idx_pass]
 
     dataset_info = prepare_header_info(param_names, cosmo_dict, N - fail_compute)
 
     if pk.shape[0] > 1:
-        np.savez(save_dir+"pk-raw.npz", params=samples, pk=pk)
+        np.savez(save_dir+"pk-raw_"+str(rank)+"_.npz", params=rank_samples, pk=pk)
+    
+    if rank == 0:
         with open(save_dir+'info.yaml', 'w') as outfile:
             yaml.dump(dataset_info, outfile, sort_keys=False, default_flow_style=False)
 
     del pk
 
     t2 = time.time()
-    print("Done! Took {:0.0f} hours {:0.0f} minutes".format(math.floor((t2 - t1)/3600), math.floor((t2 - t1)/60%60)))
-    print("Made {:0.0f} / {:0.0f} galaxy power spectra".format(N - fail_compute, N))
-    print("{:0.0f} ({:0.2f}%) power spectra failed to compute".format(fail_compute, 100.*fail_compute / N))
+    print("Rank {:d} Done! Took {:0.0f} hours {:0.0f} minutes".format(rank, math.floor((t2 - t1)/3600), math.floor((t2 - t1)/60%60)))
+    print("Made {:0.0f} / {:0.0f} galaxy power spectra".format((N/size) - fail_compute, N/size))
+    print("{:0.0f} ({:0.2f}%) power spectra failed to compute".format(fail_compute, 100.*fail_compute / (N/size)))
 
-    organize_training_set(save_dir, train_frac, valid_frac, test_frac,
-                          samples.shape[1], len(z_eff), num_spectra, len(ells), len(k), True)
+    if rank == 0:
+        print("\nRe-organizing data to training / validation / test sets...")
+        organize_training_set(save_dir, train_frac, valid_frac, test_frac,
+                            rank_samples.shape[1], len(z_eff), num_spectra, len(ells), len(k), True)
 
 if __name__ == "__main__":
     main()

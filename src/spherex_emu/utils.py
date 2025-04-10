@@ -124,12 +124,13 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
     all_pk = np.array([], dtype=np.int64).reshape(0, num_spectra, num_zbins, k_dim, num_ells)
 
     # load in all the data internally (NOTE: memory intensive!)
-    if "pk-raw.npz" in all_filenames:
-        all_filenames = ["pk-raw.npz"]
+    # if "pk-raw.npz" in all_filenames:
+    #     all_filenames = ["pk-raw.npz"]
 
     for file in all_filenames:
         if "pk-" in file:
-
+            
+            print("loading " + file + "...")
             F = np.load(training_dir+file)
             params = F["params"]
             pk = F["pk"]
@@ -151,7 +152,7 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
 
     if remove_old_files == True:
         for file in all_filenames:
-            os.remove(training_dir+file)
+            if "pk-" in file: os.remove(training_dir+file)
 
     print("splitting dataset into chunks of size [{:0.0f}, {:0.0f}, {:0.0f}]...".format(N_train, N_valid, N_test))
 
