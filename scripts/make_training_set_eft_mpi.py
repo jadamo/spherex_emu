@@ -14,8 +14,6 @@ from spherex_emu.utils import *
 # GLOBAL VARIABLES
 #-------------------------------------------------------------------
 
-N = 8
-
 # ells to generate
 # TODO: Move this to a better spot
 ells = [0, 2]
@@ -46,7 +44,7 @@ def prepare_header_info(param_names, fiducial_cosmology, n_samples):
     header_info["nuisance_params"] = bias_params
     return header_info
 
-def get_power_spectrum(samples, k, param_names, cosmo_dict, ps_config):
+def get_power_spectrum(samples, k, param_names, cosmo_dict, ps_config, theory):
 
     num_tracers = ps_config['number_density_table'].shape[0]
     num_spectra = num_tracers + math.comb(num_tracers, 2)
@@ -60,7 +58,6 @@ def get_power_spectrum(samples, k, param_names, cosmo_dict, ps_config):
         sample_dict = dict(zip(param_names, samples[idx]))
         param_vector = prepare_ps_inputs(sample_dict, cosmo_dict, num_tracers, num_zbins)
         try:
-            theory = ps_theory_calculator.PowerSpectrumMultipole1Loop(ps_config)
             ps = theory(k, ells, param_vector) / cosmo_dict["cosmo_params"]["h"]["value"]**3
             ps = np.transpose(ps, (1, 0, 3, 2))
 
@@ -84,14 +81,15 @@ def main():
     size = MPI.COMM_WORLD.Get_size()
     rank = MPI.COMM_WORLD.Get_rank()
 
-    if len(sys.argv) < 5:
-        if rank == 0: print("USAGE: python make_training_set_eft.py <cosmo_config_file> <survey_config_file> <save_dir> <k array file>")
+    if len(sys.argv) < 6:
+        if rank == 0: print("USAGE: python make_training_set_eft.py <cosmo_config_file> <survey_config_file> <save_dir> <k array file> <N>")
         return -1
 
     cosmo_config_file  = sys.argv[1]
     survey_config_file = sys.argv[2]
     save_dir           = sys.argv[3]
     k_array_file       = sys.argv[4]
+    N                  = int(sys.argv[5])
 
     if not os.path.exists(save_dir):
         print("Attempting to create save directory...")
@@ -130,6 +128,8 @@ def main():
     rank_samples = all_samples[offset:offset+data_len,:]
     assert rank_samples.shape[0] == data_len
 
+    theory = ps_theory_calculator.PowerSpectrumMultipole1Loop(ps_config)
+
     if rank == 0:
         print("Number of samples:", ps_config['number_density_table'].shape[0])
         print("Number of redshift bins:", len(ps_config["redshift_list"]))
@@ -138,7 +138,7 @@ def main():
 
         # first, generate the power spectrum at the fiducial cosmology
         print("Generating fiducial power spectrum...")
-        pk, result = get_power_spectrum([{}], k, param_names, cosmo_dict, ps_config)
+        pk, result = get_power_spectrum([{}], k, param_names, cosmo_dict, ps_config, theory)
         if result == 0:
             np.save(save_dir+"ps_fid.npy", pk)
             np.savez(save_dir+"kbins.npz", k=k)
@@ -146,11 +146,10 @@ def main():
             print("ERROR! failed to calculate fiducial power spectrum! Exiting...")
             return -1
 
-    # # initialize pool for multiprocessing
     t1 = time.time()
     if rank == 0: print("Generating", str(int(N)), "power spectra across", str(size), "processors ("+str(int(N / size))+" per processor)...")
 
-    pk, result = get_power_spectrum(rank_samples, k, param_names, cosmo_dict, ps_config)
+    pk, result = get_power_spectrum(rank_samples, k, param_names, cosmo_dict, ps_config, theory)
 
     # aggregate data
     pk = np.array(pk)
@@ -176,8 +175,9 @@ def main():
     t2 = time.time()
     print("Rank {:d} Done! Took {:0.0f} hours {:0.0f} minutes".format(rank, math.floor((t2 - t1)/3600), math.floor((t2 - t1)/60%60)))
     print("Made {:0.0f} / {:0.0f} galaxy power spectra".format((N/size) - fail_compute, N/size))
-    print("{:0.0f} ({:0.2f}%) power spectra failed to compute".format(fail_compute, 100.*fail_compute / (N/size)))
+    #print("{:0.0f} ({:0.2f}%) power spectra failed to compute".format(fail_compute, 100.*fail_compute / (N/size)))
 
+    comm.Barrier()
     if rank == 0:
         print("\nRe-organizing data to training / validation / test sets...")
         organize_training_set(save_dir, train_frac, valid_frac, test_frac,
