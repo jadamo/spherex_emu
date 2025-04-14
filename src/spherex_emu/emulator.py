@@ -244,7 +244,9 @@ class pk_emulator():
         ps_file = self.input_dir+self.training_dir+"ps_fid.npy"
 
         if os.path.exists(ps_file):
-            self.ps_fid = torch.from_numpy(np.load(ps_file)).to(torch.float32).to(self.device)
+            self.ps_fid = torch.from_numpy(np.load(ps_file)).to(torch.float32).to(self.device)[0]
+
+            # permute input power spectrum if it's a different shape than expected
             if self.ps_fid.shape[3] == self.num_kbins:
                 self.ps_fid = torch.permute(self.ps_fid, (0, 1, 3, 2))
             if self.ps_fid.shape[0] == self.num_zbins:
