@@ -166,7 +166,8 @@ class pk_emulator():
         """Gets the power spectra corresponding to the given input params by passing them though the emulator
         
         Args:
-            params: 1D numpy array or torch Tensor containing a list of cosmology + galaxy bias parameters.
+            params: 1D or 2D numpy array or torch Tensor containing a list of cosmology + galaxy bias parameters. 
+                if params is a 2D array, this function generates a batch of power spectra simultaniously
             raw_output: bool specifying whether or not to return the raw network output without undoing normalization. Default False
         """
 
@@ -174,16 +175,18 @@ class pk_emulator():
         self.model.eval()
         with torch.no_grad():
             params = self._check_params(params)
-            pk = self.model.forward(params)[0] # <- shape [nps, nz, nk*nl]
+            pk = self.model.forward(params) # <- shape [nb, nps, nz, nk*nl]
             
             if raw_output:
                 return pk
             else:
-                pk = un_normalize_power_spectrum(torch.flatten(pk, start_dim=2), self.ps_fid, self.sqrt_eigvals, self.Q, self.Q_inv)
-                pk = pk.view(self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
+                pk = un_normalize_power_spectrum(torch.flatten(pk, start_dim=3), self.ps_fid, self.sqrt_eigvals, self.Q, self.Q_inv)
+                if params.shape[0] == 1:
+                    pk = pk.view(self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
+                else:
+                    pk = pk.view(-1, self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
                 pk = pk.to("cpu").detach().numpy()
-                return pk
-
+                return pk        
 
     def get_required_parameters(self):
         """Returns a dictionary of input parameters needed by the emulator. Used within Cosmo_Inference"""
@@ -395,7 +398,8 @@ class pk_emulator():
         if isinstance(params, torch.Tensor): params = params.to(self.device)
         else: params = torch.from_numpy(params).to(torch.float32).to(self.device)
 
-        params = self.model.organize_parameters(params.unsqueeze(0))
+        if params.dim() == 1: params = params.unsqueeze(0)
+        params = self.model.organize_parameters(params)
 
         if torch.any(params < self.input_normalizations[0]) or \
            torch.any(params > self.input_normalizations[1]):
