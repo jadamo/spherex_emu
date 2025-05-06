@@ -5,6 +5,8 @@ from torch.nn import functional as F
 import numpy as np
 import itertools
 import torch
+import time
+from spherex_emu.emulator import pk_emulator
 
 def load_config_file(config_file:str):
     """loads in the emulator config file as a dictionary object
@@ -304,3 +306,24 @@ def un_normalize_power_spectrum(ps_raw, ps_fid, sqrt_eigvals, Q, Q_inv):
         raise IndexError
 
     return ps_new
+
+
+def compile_multiple_device_training_results(save_dir, config_dir, num_gpus):
+    """takes networks saved on seperate ranks and combines them to the same format as when training on one device"""
+
+    full_emulator = pk_emulator(config_dir, "train")
+    full_emulator.model.eval()
+
+    net_idx = torch.Tensor(list(itertools.product(range(full_emulator.num_spectra), range(full_emulator.num_zbins)))).to(int)
+    split_indices = net_idx.chunk(num_gpus)
+
+    seperate_networks = []
+    for n in range(num_gpus):
+        sub_dir = "rank_"+str(n) + "/"
+        seperate_network = pk_emulator(save_dir+sub_dir, "eval")
+
+        for (ps, z) in split_indices[n]:
+            net_idx = (z * full_emulator.num_spectra) + ps
+            full_emulator.model.networks[net_idx] = seperate_networks.model.networks[net_idx]
+
+    return full_emulator

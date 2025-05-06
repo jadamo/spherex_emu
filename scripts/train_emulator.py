@@ -1,6 +1,11 @@
 from spherex_emu.emulator import pk_emulator
 import math, time, sys
 import torch
+import torch.multiprocessing as mp
+import itertools
+
+from spherex_emu.utils import compile_multiple_device_training_results
+import spherex_emu.training_loops as training_loops
 
 def main():
 
@@ -10,8 +15,26 @@ def main():
 
     t1 = time.time()
     emulator = pk_emulator(sys.argv[1], "train")
-    print("Training network on device:", emulator.device)
-    emulator.train()
+
+    # train on a single cpu / gpu
+    if emulator.num_gpus < 2:
+        print("Training network on device:", emulator.device)
+        emulator.train_on_single_device()
+    # split the sub-networks to train on multiple gpus
+    else:
+        print("Splitting up training on {:d} GPUs...".format(emulator.num_gpus))
+        net_idx = torch.Tensor(list(itertools.product(range(emulator.num_spectra), range(emulator.num_zbins)))).to(int)
+        split_indices = net_idx.chunk(emulator.num_gpus)
+
+        mp.spawn(
+            training_loops.train_on_multiple_devices,
+            args=(split_indices, sys.argv[1]),
+            nprocs=emulator.num_gpus,
+            join=True
+        )
+        full_emulator = compile_multiple_device_training_results(emulator.save_dir, sys.argv[1], emulator.num_gpus)
+        full_emulator._save_model()
+
     t2 = time.time()
     print("Training Done in {:0.0f} hours {:0.0f} minutes {:0.2f} seconds\n".format(
         (t2-t1)//3600, ((t2-t1) % 3600) // 60, (t2-t1)%60))

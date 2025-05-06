@@ -18,7 +18,7 @@ class pk_emulator():
     """Class defining the neural network emulator."""
 
 
-    def __init__(self, net_dir:str, mode:str="train"):
+    def __init__(self, net_dir:str, mode:str="train", device=None):
         """Emulator constructor, initializes the network structure and all supporting data
 
         Args:
@@ -38,7 +38,7 @@ class pk_emulator():
         for key in self.config_dict:
             setattr(self, key, self.config_dict[key])
 
-        self._init_device()
+        self._init_device(device)
         self._init_model()
         self._init_loss()
 
@@ -111,29 +111,7 @@ class pk_emulator():
             else: return data
 
 
-    def train(self):
-
-        # store training data as nested lists with dims [nps, nz]
-        self.train_loss     = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
-        self.valid_loss     = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
-        self.train_time = 0.
-        if self.print_progress: print("Initial learning rate = {:0.2e}".format(self.learning_rate))
-        
-        self._set_optimizer()
-        if self.num_gpus < 2: self.train_on_single_device()
-        else: 
-            print("Splitting up training on {:d} GPUs...".format(self.num_gpus))
-            net_idx = torch.Tensor(list(itertools.product(range(self.num_spectra), range(self.num_zbins)))).to(int)
-            split_indices = net_idx.chunk(self.num_gpus)
-
-            mp.spawn(
-                self.train_on_multiple_devices,
-                args=(split_indices),
-                nprocs=self.num_gpus,
-                join=True
-            )
-
-
+    # TODO: potentially move this to a different file based on multi-gpu solution
     def train_on_single_device(self):
         """Trains the network"""
 
@@ -142,9 +120,15 @@ class pk_emulator():
         valid_loader = self.load_data("validation")
 
         # store training data as nested lists with dims [nps, nz]
+        self.train_loss     = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
+        self.valid_loss     = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
         best_loss           = [[torch.inf for i in range(self.num_zbins)] for j in range(self.num_spectra)]
         epochs_since_update = [[0 for i in range(self.num_zbins)] for j in range(self.num_spectra)]
+        self.train_time = 0.
+        if self.print_progress: print("Initial learning rate = {:0.2e}".format(self.learning_rate))
         
+        self._set_optimizer()
+
         self.model.train()
         start_time = time.time()
         # loop thru epochs
@@ -177,64 +161,6 @@ class pk_emulator():
 
                 if self.print_progress: print("Net idx : [{:d}, {:d}], Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(
                     ps, z, epoch, self.train_loss[ps][z][-1], self.valid_loss[ps][z][-1], epochs_since_update[ps][z]))
-                if epochs_since_update[ps][z] > self.early_stopping_epochs:
-                    print("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[ps][z]))
-
-
-    def train_on_multiple_devices(self, gpu_id, net_idx):
-            
-        device = torch.device(f"cuda:{gpu_id}")
-        train_loader = self.load_data("training", self.training_set_fraction).to(device)
-        valid_loader = self.load_data("validation").to(device)
-
-        best_loss           = [[torch.inf for i in range(self.num_zbins)] for j in range(self.num_spectra)]
-        epochs_since_update = [[0 for i in range(self.num_zbins)] for j in range(self.num_spectra)]
-
-        self.model.train()
-        for idx in net_idx[gpu_id]:
-            self.model.networks[idx].to(device)
-
-        # TODO: Come up with better way to do this
-        input_normalizations = self.input_normalizations.to(device)
-        ps_fid = self.ps_fid.to(device)
-        invcov_full = self.invcov_full.to(device)
-        sqrt_eigvals = self.sqrt_eigvals.to(device)
-        Q = self.Q.to(device)
-        Q_inv = self.Q_inv.to(device)
-
-
-        start_time = time.time()
-        # loop thru epochs
-        for epoch in range(self.num_epochs):
-            # loop thru individual networks
-            for (ps, z) in net_idx[gpu_id]:
-                if epochs_since_update[ps][z] > self.early_stopping_epochs:
-                    continue
-
-                training_loss = self._train_one_epoch(train_loader, [ps, z])
-                if self.recalculate_train_loss:
-                    self.train_loss[ps][z].append(calc_avg_loss(self.model, train_loader, input_normalizations, 
-                                                                ps_fid, invcov_full, sqrt_eigvals, 
-                                                                Q, Q_inv, self.loss_function, [ps, z]))
-                else:
-                    self.train_loss[ps][z].append(training_loss)
-                self.valid_loss[ps][z].append(calc_avg_loss(self.model, valid_loader, input_normalizations, 
-                                                            ps_fid, invcov_full, sqrt_eigvals, 
-                                                            self.Q, Q_inv, self.loss_function, [ps, z]))
-                
-                self.scheduler[ps][z].step(self.valid_loss[ps][z][-1])
-                self.train_time = time.time() - start_time
-
-                if self.valid_loss[ps][z][-1] < best_loss[ps][z]:
-                    best_loss[ps][z] = self.valid_loss[ps][z][-1]
-                    epochs_since_update[ps][z] = 0
-                    # NOTE: This solution has a potential bug where all models on gpu 1 are done training first, so further imporvements are not saved.
-                    if gpu_id == 1: self._save_model()
-                else:
-                    epochs_since_update[ps][z] += 1
-
-                if self.print_progress: print("GPU: {:d}, Net idx : [{:d}, {:d}], Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(
-                    gpu_id, ps, z, epoch, self.train_loss[ps][z][-1], self.valid_loss[ps][z][-1], epochs_since_update[ps][z]))
                 if epochs_since_update[ps][z] > self.early_stopping_epochs:
                     print("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[ps][z]))
 
@@ -279,10 +205,11 @@ class pk_emulator():
     # Helper methods: Not meant to be called by the user directly
     # -----------------------------------------------------------
 
-    def _init_device(self):
+    def _init_device(self, device):
         """Sets emulator device based on machine configuration"""
         self.num_gpus = torch.cuda.device_count()
-        if self.use_gpu == False:               self.device = torch.device('cpu')
+        if device != None:                      self.device = device
+        elif self.use_gpu == False:             self.device = torch.device('cpu')
         elif torch.cuda.is_available():         self.device = torch.device('cuda:0')
         elif torch.backends.mps.is_available(): self.device = torch.device("mps")
         else:                                   self.device = torch.device('cpu')
@@ -461,11 +388,6 @@ class pk_emulator():
         # data related to output normalization
         output_files = [self.ps_fid, self.invcov_full, self.invcov_blocks, self.sqrt_eigvals, self.Q]
         torch.save(output_files, self.input_dir+self.save_dir+"output_normalizations.pt")
-        # torch.save(self.ps_fid, self.input_dir+self.save_dir+"ps_fid.dat")
-        # torch.save(self.invcov_full, self.input_dir+self.save_dir+"invcov_full.dat")
-        # torch.save(self.invcov_blocks, self.input_dir+self.save_dir+"invcov_blocks.dat")
-        # torch.save(self.sqrt_eigvals, self.input_dir+self.save_dir+"sqrt_eigenvals.dat")
-        # torch.save(self.Q, self.input_dir+self.save_dir+"eigenvectors.dat")
 
         # Finally, the actual model parameters
         torch.save(self.model.state_dict(), self.input_dir+self.save_dir+'network.params')
