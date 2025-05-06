@@ -364,6 +364,9 @@ class pk_emulator():
     def _save_model(self):
         """saves the current model state and normalization information to file"""
 
+        if not os.path.exists(self.input_dir+self.save_dir):
+            os.mkdir(self.input_dir+self.save_dir)
+
         # training statistics
         if not os.path.exists(self.input_dir+self.save_dir+"training_statistics"):
             os.mkdir(self.input_dir+self.save_dir+"training_statistics")
@@ -440,3 +443,34 @@ class pk_emulator():
 
         if self.print_progress: print("time for epoch: {:0.1f}s, time per batch: {:0.1f}ms".format(total_time, 1000*total_time / len(train_loader)))
         return (total_loss / len(train_loader))
+
+# --------------------------------------------------------------------------
+# extra helper function (TODO: Find a better place for this)
+# --------------------------------------------------------------------------
+def compile_multiple_device_training_results(save_dir, config_dir, num_gpus):
+    """takes networks saved on seperate ranks and combines them to the same format as when training on one device"""
+
+    full_emulator = pk_emulator(config_dir, "train")
+    full_emulator.model.eval()
+
+    net_idx = torch.Tensor(list(itertools.product(range(full_emulator.num_spectra), range(full_emulator.num_zbins)))).to(int)
+    split_indices = net_idx.chunk(num_gpus)
+
+    full_emulator.train_loss = torch.zeros((full_emulator.num_spectra, full_emulator.num_zbins, full_emulator.num_epochs))
+    full_emulator.valid_loss = torch.zeros((full_emulator.num_spectra, full_emulator.num_zbins, full_emulator.num_epochs))
+    full_emulator.train_time = 0.
+    for n in range(num_gpus):
+        sub_dir = "rank_"+str(n) + "/"
+        seperate_network = pk_emulator(save_dir+sub_dir, "eval")
+
+        for (ps, z) in split_indices[n]:
+            net_idx = (z * full_emulator.num_spectra) + ps
+            full_emulator.model.networks[net_idx] = seperate_network.model.networks[net_idx]
+
+            train_data = torch.load(save_dir+sub_dir+"training_statistics/train_data_"+str(int(ps))+"_"+str(int(z))+".dat")
+            epochs = train_data.shape[1]
+
+            full_emulator.train_loss[ps, z, :epochs] = train_data[0,:]
+            full_emulator.valid_loss[ps, z, :epochs] = train_data[1,:]
+
+    return full_emulator

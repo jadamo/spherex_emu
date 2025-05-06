@@ -1,10 +1,9 @@
-from spherex_emu.emulator import pk_emulator
+from spherex_emu.emulator import pk_emulator, compile_multiple_device_training_results
 import math, time, sys
 import torch
 import torch.multiprocessing as mp
 import itertools
 
-from spherex_emu.utils import compile_multiple_device_training_results
 import spherex_emu.training_loops as training_loops
 
 def main():
@@ -32,7 +31,7 @@ def main():
             nprocs=emulator.num_gpus,
             join=True
         )
-        full_emulator = compile_multiple_device_training_results(emulator.save_dir, sys.argv[1], emulator.num_gpus)
+        full_emulator = compile_multiple_device_training_results(emulator.input_dir + emulator.save_dir, sys.argv[1], emulator.num_gpus)
         full_emulator._save_model()
 
     t2 = time.time()

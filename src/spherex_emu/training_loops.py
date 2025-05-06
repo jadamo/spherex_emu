@@ -1,15 +1,17 @@
 import torch
 import time
+import itertools
 
-from spherex_emu.emulator import pk_emulator
+from spherex_emu.emulator import pk_emulator, compile_multiple_device_training_results
 from spherex_emu.utils import calc_avg_loss
 
 # TODO: Move other training loop here AFTER Grace is done
 
-def train_on_multiple_devices(gpu_id, net_indeces, config_dict):
+def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
     
     device = torch.device(f"cuda:{gpu_id}")
-    emulator = pk_emulator(config_dict, "train", device)
+    emulator = pk_emulator(config_dir, "train", device)
+    base_save_dir = emulator.save_dir
     emulator.save_dir += "rank_"+str(gpu_id)+"/"
 
     train_loader = emulator.load_data("training", emulator.training_set_fraction)
@@ -63,3 +65,8 @@ def train_on_multiple_devices(gpu_id, net_indeces, config_dict):
                 gpu_id, ps, z, epoch, emulator.train_loss[ps][z][-1], emulator.valid_loss[ps][z][-1], epochs_since_update[ps][z]))
             if epochs_since_update[ps][z] > emulator.early_stopping_epochs:
                 print("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[ps][z]))
+
+        if gpu_id == 0 and epoch % 100 == 0 and epoch > 0:
+            print("Checkpointing progress from all devices...")
+            full_emulator = compile_multiple_device_training_results(emulator.input_dir + base_save_dir, config_dir, emulator.num_gpus)
+            full_emulator._save_model()
