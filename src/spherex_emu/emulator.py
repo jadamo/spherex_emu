@@ -69,9 +69,9 @@ class pk_emulator():
         self.model.eval()
         self.model.load_state_dict(torch.load(path+'network.params', map_location=self.device))
         
-        self.input_normalizations = torch.load(path+"input_normalizations.pt", map_location=self.device)
+        self.input_normalizations = torch.load(path+"input_normalizations.pt", map_location=self.device, weights_only=True)
 
-        output_norm_data = torch.load(path+"output_normalizations.pt", map_location=self.device)
+        output_norm_data = torch.load(path+"output_normalizations.pt", map_location=self.device, weights_only=True)
         self.ps_fid        = output_norm_data[0]
         self.invcov_full   = output_norm_data[1]
         self.invcov_blocks = output_norm_data[2]
@@ -125,7 +125,7 @@ class pk_emulator():
         best_loss           = [[torch.inf for i in range(self.num_zbins)] for j in range(self.num_spectra)]
         epochs_since_update = [[0 for i in range(self.num_zbins)] for j in range(self.num_spectra)]
         self.train_time = 0.
-        if self.print_progress: print("Initial learning rate = {:0.2e}".format(self.learning_rate))
+        if self.print_progress: print("Initial learning rate = {:0.2e}".format(self.learning_rate), flush=True)
         
         self._set_optimizer()
 
@@ -160,9 +160,9 @@ class pk_emulator():
                     epochs_since_update[ps][z] += 1
 
                 if self.print_progress: print("Net idx : [{:d}, {:d}], Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(
-                    ps, z, epoch, self.train_loss[ps][z][-1], self.valid_loss[ps][z][-1], epochs_since_update[ps][z]))
+                    ps, z, epoch, self.train_loss[ps][z][-1], self.valid_loss[ps][z][-1], epochs_since_update[ps][z]), flush=True)
                 if epochs_since_update[ps][z] > self.early_stopping_epochs:
-                    print("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[ps][z]))
+                    print("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[ps][z]), flush=True)
 
 
     def get_power_spectra(self, params, raw_output:bool = False):
@@ -441,7 +441,7 @@ class pk_emulator():
             total_loss += loss.detach()
             total_time += (time.time() - t1)
 
-        if self.print_progress: print("time for epoch: {:0.1f}s, time per batch: {:0.1f}ms".format(total_time, 1000*total_time / len(train_loader)))
+        if self.print_progress: print("time for epoch: {:0.1f}s, time per batch: {:0.1f}ms".format(total_time, 1000*total_time / len(train_loader)), flush=True)
         return (total_loss / len(train_loader))
 
 # --------------------------------------------------------------------------
@@ -467,7 +467,7 @@ def compile_multiple_device_training_results(save_dir, config_dir, num_gpus):
             net_idx = (z * full_emulator.num_spectra) + ps
             full_emulator.model.networks[net_idx] = seperate_network.model.networks[net_idx]
 
-            train_data = torch.load(save_dir+sub_dir+"training_statistics/train_data_"+str(int(ps))+"_"+str(int(z))+".dat")
+            train_data = torch.load(save_dir+sub_dir+"training_statistics/train_data_"+str(int(ps))+"_"+str(int(z))+".dat", weights_only=True)
             epochs = train_data.shape[1]
 
             full_emulator.train_loss[ps, z, :epochs] = train_data[0,:]
