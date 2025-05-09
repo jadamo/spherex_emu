@@ -10,9 +10,12 @@ from spherex_emu.utils import calc_avg_loss
 def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
     
     device = torch.device(f"cuda:{gpu_id}")
+    # Each sub-process gets its own indpendent emulator object, where it will train the corresponding
+    # sub-networks based on net_indeces
     emulator = pk_emulator(config_dir, "train", device)
     base_save_dir = emulator.save_dir
     emulator.save_dir += "rank_"+str(gpu_id)+"/"
+    print(device, net_indeces[gpu_id], flush=True)
 
     train_loader = emulator.load_data("training", emulator.training_set_fraction)
     valid_loader = emulator.load_data("validation")
@@ -23,14 +26,10 @@ def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
     best_loss           = [[torch.inf for i in range(emulator.num_zbins)] for j in range(emulator.num_spectra)]
     epochs_since_update = [[0 for i in range(emulator.num_zbins)] for j in range(emulator.num_spectra)]
     emulator.train_time = 0.
-    if emulator.print_progress: print("Initial learning rate = {:0.2e}".format(emulator.learning_rate))
+    if emulator.print_progress: print("Initial learning rate = {:0.2e}".format(emulator.learning_rate), flush=True)
     
     emulator._set_optimizer()
-
     emulator.model.train()
-    # for (ps, z) in net_indeces[gpu_id]:
-    #     idx = (z * emulator.num_spectra) + ps
-    #     emulator.model.networks[idx].to(device)
 
     start_time = time.time()
     # loop thru epochs
@@ -62,11 +61,11 @@ def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
                 epochs_since_update[ps][z] += 1
 
             if emulator.print_progress: print("GPU: {:d}, Net idx : [{:d}, {:d}], Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(
-                gpu_id, ps, z, epoch, emulator.train_loss[ps][z][-1], emulator.valid_loss[ps][z][-1], epochs_since_update[ps][z]))
+                gpu_id, ps, z, epoch, emulator.train_loss[ps][z][-1], emulator.valid_loss[ps][z][-1], epochs_since_update[ps][z]), flush=True)
             if epochs_since_update[ps][z] > emulator.early_stopping_epochs:
-                print("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[ps][z]))
+                print("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[ps][z]), flush=True)
 
-        if gpu_id == 0 and epoch % 100 == 0 and epoch > 0:
-            print("Checkpointing progress from all devices...")
+        if gpu_id == 0 and epoch % 50 == 0 and epoch > 0:
+            print("Checkpointing progress from all devices...", flush=True)
             full_emulator = compile_multiple_device_training_results(emulator.input_dir + base_save_dir, config_dir, emulator.num_gpus)
             full_emulator._save_model()
