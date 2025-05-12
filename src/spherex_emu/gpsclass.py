@@ -50,7 +50,6 @@ class CalcGalaxyPowerSpec:
     def set_pk_lin(self, params, z_eff):
         """Calculates the linear matter power spectrum from camb"""
 
-        print(z_eff)
         H0, ombh2, omch2, As, ns = params[0], params[1], params[2], params[3], params[4]
         pars = camb.CAMBparams()
         pars.set_cosmology(H0=H0, ombh2=ombh2, omch2=omch2)
