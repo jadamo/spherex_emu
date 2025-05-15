@@ -32,8 +32,8 @@ else # Otherwise, fetch only cpu-specific libraries
 fi
 
 # explicitely install some same package versions as the SPHEREx inference module to ensure code remains compatible
-conda install numpy==1.25.2
-conda install scipy=1.11.2
+pip install numpy==1.25.2
+pip install scipy==1.11.2
 # install spherex_emu itself
 pip install .
 

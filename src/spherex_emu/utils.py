@@ -5,8 +5,6 @@ from torch.nn import functional as F
 import numpy as np
 import itertools
 import torch
-import time
-from spherex_emu.emulator import pk_emulator
 
 def load_config_file(config_file:str):
     """loads in the emulator config file as a dictionary object
