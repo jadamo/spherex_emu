@@ -5,7 +5,8 @@ import time, math, yaml, sys
 import numpy as np
 from mpi4py import MPI
 
-from itertools import repeat
+from scipy.integrate import romb
+from scipy.special import lpmv
 
 import ps_theory_calculator
 from spherex_emu.utils import *
@@ -52,6 +53,9 @@ def get_power_spectrum(samples, k, param_names, cosmo_dict, ps_config, theory):
 
     num_to_calculate = len(samples)
     galaxy_ps = np.zeros((num_to_calculate, num_spectra, num_zbins, len(k), len(ells)))
+
+    k_lin = np.geomspace(np.min(k)*0.9, np.max(k)*1.1, 256)
+    ps_nw = np.zeros((num_to_calculate, len(k_lin)))
     result = np.zeros(num_to_calculate)
 
     for idx in range(num_to_calculate):
@@ -60,10 +64,13 @@ def get_power_spectrum(samples, k, param_names, cosmo_dict, ps_config, theory):
         try:
             ps = theory(k, ells, param_vector) / cosmo_dict["cosmo_params"]["h"]["value"]**3
             ps = np.transpose(ps, (1, 0, 3, 2))
-
+            pk_nw = theory.model.irres.get_pk_nw(k_lin)
             if not np.any(np.isnan(ps)) and \
-            not np.any(np.isinf(ps)): 
+               not np.any(np.isinf(ps)) and \
+               not np.any(np.isnan(pk_nw)) and \
+               not np.any(np.isinf(pk_nw)) : 
                 galaxy_ps[idx] = ps
+                ps_nw[idx] = pk_nw
             else: 
                 print("Power spectrum calculation failed!")
                 result[idx] = -1
@@ -149,22 +156,24 @@ def main():
     t1 = time.time()
     if rank == 0: print("Generating", str(int(N)), "power spectra across", str(size), "processors ("+str(int(N / size))+" per processor)...")
 
-    pk, result = get_power_spectrum(rank_samples, k, param_names, cosmo_dict, ps_config, theory)
+    galaxy_ps, ps_nw, result = get_power_spectrum(rank_samples, k, param_names, cosmo_dict, ps_config, theory)
 
     # aggregate data
-    pk = np.array(pk)
+    galaxy_ps = np.array(galaxy_ps)
+    ps_nw = np.array(ps_nw)
     result = np.array(result)
 
     idx_pass = np.where(result == 0)[0]
     fail_compute = len(np.where(result == -1)[0])
 
-    pk = pk[idx_pass]
+    galaxy_ps = galaxy_ps[idx_pass]
+    ps_nw = ps_nw[idx_pass]
     rank_samples = rank_samples[idx_pass]
 
     dataset_info = prepare_header_info(param_names, cosmo_dict, N - fail_compute)
 
     if pk.shape[0] > 1:
-        np.savez(save_dir+"pk-raw_"+str(rank)+"_.npz", params=rank_samples, pk=pk)
+        np.savez(save_dir+"pk-raw_"+str(rank)+"_.npz", params=rank_samples, galaxy_ps=galaxy_ps, ps_nw=ps_nw)
     
     if rank == 0:
         with open(save_dir+'info.yaml', 'w') as outfile:

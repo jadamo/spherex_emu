@@ -121,7 +121,8 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
     all_filenames = next(os.walk(training_dir), (None, None, []))[2]  # [] if no file
 
     all_params = np.array([], dtype=np.int64).reshape(0,param_dim)
-    all_pk = np.array([], dtype=np.int64).reshape(0, num_spectra, num_zbins, k_dim, num_ells)
+    all_galaxy_ps = np.array([], dtype=np.int64).reshape(0, num_spectra, num_zbins, k_dim, num_ells)
+    all_ps_nw = np.array([], dtype=np.int64).reshape(0, 256)
 
     # load in all the data internally (NOTE: memory intensive!)
     # if "pk-raw.npz" in all_filenames:
@@ -133,10 +134,12 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
             print("loading " + file + "...")
             F = np.load(training_dir+file)
             params = F["params"]
-            pk = F["pk"]
+            galaxy_ps = F["gakaxy_ps"]
+            ps_nw = F["ps_nw"]
             del F
             all_params = np.vstack([all_params, params])
-            all_pk = np.vstack([all_pk, pk])
+            all_galaxy_ps = np.vstack([all_galaxy_ps, galaxy_ps])
+            all_ps_nw = np.vstack([all_ps_nw, ps_nw])
 
     N = all_params.shape[0]
     N_train = int(N * train_frac)
@@ -158,13 +161,16 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
 
     np.savez(training_dir+"pk-training.npz", 
                 params=all_params[0:N_train],
-                pk=all_pk[0:N_train])
+                galaxy_ps=all_galaxy_ps[0:N_train],
+                ps_nw=all_ps_nw[0:N_train])
     np.savez(training_dir+"pk-validation.npz", 
                 params=all_params[valid_start:valid_end], 
-                pk=all_pk[valid_start:valid_end])
+                galaxy_ps=all_galaxy_ps[valid_start:valid_end],
+                ps_nw=all_ps_nw[valid_start:valid_end])
     np.savez(training_dir+"pk-testing.npz", 
                 params=all_params[valid_end:test_end], 
-                pk=all_pk[valid_end:test_end])    
+                galaxy_ps=all_galaxy_ps[valid_end:test_end],
+                ps_nw=all_ps_nw[valid_end:test_end]) 
 
 
 def get_full_invcov(cov, num_zbins):
@@ -304,24 +310,3 @@ def un_normalize_power_spectrum(ps_raw, ps_fid, sqrt_eigvals, Q, Q_inv):
         raise IndexError
 
     return ps_new
-
-
-def compile_multiple_device_training_results(save_dir, config_dir, num_gpus):
-    """takes networks saved on seperate ranks and combines them to the same format as when training on one device"""
-
-    full_emulator = pk_emulator(config_dir, "train")
-    full_emulator.model.eval()
-
-    net_idx = torch.Tensor(list(itertools.product(range(full_emulator.num_spectra), range(full_emulator.num_zbins)))).to(int)
-    split_indices = net_idx.chunk(num_gpus)
-
-    for n in range(num_gpus):
-        sub_dir = "rank_"+str(n) + "/"
-        seperate_network = pk_emulator(save_dir+sub_dir, "eval")
-        seperate_network.model.eval()
-
-        for (ps, z) in split_indices[n]:
-            net_idx = (z * full_emulator.num_spectra) + ps
-            full_emulator.model.networks[net_idx] = seperate_network.model.networks[net_idx]
-
-    return full_emulator
