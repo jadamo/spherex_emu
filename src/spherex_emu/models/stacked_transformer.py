@@ -32,24 +32,24 @@ class single_transformer(nn.Module):
         self.output_dim = self.num_ells * self.num_kbins
 
         # mlp blocks
-        self.input_layer = nn.Linear(self.input_dim, config_dict["mlp_dims"][0])
+        self.input_layer = nn.Linear(self.input_dim, self.output_dim)
         self.mlp_blocks = nn.Sequential()
-        for i in range(config_dict["num_mlp_blocks"]):
+        for i in range(config_dict["galaxy_ps_emulator"]["num_mlp_blocks"]):
             self.mlp_blocks.add_module("ResNet"+str(i+1),
-                    blocks.block_resnet(config_dict["mlp_dims"][i],
-                                        config_dict["mlp_dims"][i+1],
-                                        config_dict["num_block_layers"],
-                                        config_dict["use_skip_connection"]))
+                    blocks.block_resnet(self.output_dim,
+                                        self.output_dim,
+                                        config_dict["galaxy_ps_emulator"]["num_block_layers"],
+                                        config_dict["galaxy_ps_emulator"]["use_skip_connection"]))
         
         # expand mlp section output
-        split_dim = config_dict["split_dim"]
-        split_size = config_dict["split_size"]
+        split_dim = config_dict["galaxy_ps_emulator"]["split_dim"]
+        split_size = config_dict["galaxy_ps_emulator"]["split_size"]
         embedding_dim = split_size*split_dim
-        self.embedding_layer = nn.Linear(config_dict["mlp_dims"][-1], embedding_dim)
+        self.embedding_layer = nn.Linear(self.output_dim, embedding_dim)
 
         # do one transformer block per z-bin for now
         self.transformer_blocks = nn.Sequential()
-        for i in range(config_dict["num_transformer_blocks"]):
+        for i in range(config_dict["galaxy_ps_emulator"]["num_transformer_blocks"]):
             self.transformer_blocks.add_module("Transformer"+str(i+1),
                     blocks.block_transformer_encoder(embedding_dim, split_dim, 0.1))
             self.transformer_blocks.add_module("Activation"+str(i+1), 

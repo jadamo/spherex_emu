@@ -8,6 +8,7 @@ import itertools
 from spherex_emu.models import blocks
 from spherex_emu.models.stacked_mlp import stacked_mlp
 from spherex_emu.models.stacked_transformer import stacked_transformer
+from spherex_emu.models.single_transformer import single_transformer
 from spherex_emu.dataset import pk_galaxy_dataset
 from spherex_emu.utils import load_config_file, calc_avg_loss, get_parameter_ranges,\
                               normalize_cosmo_params, un_normalize_power_spectrum, \
@@ -47,7 +48,7 @@ class pk_emulator():
             self._init_inverse_covariance()
             self._diagonalize_covariance()
             self._init_input_normalizations()
-            self.model.apply(self._init_weights)
+            self.galaxy_ps_model.apply(self._init_weights)
 
         elif mode == "eval":
             self.load_trained_model(net_dir)
@@ -66,8 +67,8 @@ class pk_emulator():
         """
 
         print("loading emulator from " + path)
-        self.model.eval()
-        self.model.load_state_dict(torch.load(path+'network.params', map_location=self.device))
+        self.galaxy_ps_model.eval()
+        self.galaxy_ps_model.load_state_dict(torch.load(path+'network.params', map_location=self.device))
         
         self.input_normalizations = torch.load(path+"input_normalizations.pt", map_location=self.device, weights_only=True)
 
@@ -104,66 +105,11 @@ class pk_emulator():
         if key in ["training", "validation", "testing"]:
             data = pk_galaxy_dataset(dir, key, data_frac)
             data.to(self.device)
-            data.normalize_data(self.ps_fid, self.sqrt_eigvals, self.Q)
+            data.normalize_data(self.ps_fid, self.ps_nw_fid, self.sqrt_eigvals, self.Q)
             data_loader = torch.utils.data.DataLoader(data, batch_size=self.config_dict["batch_size"], shuffle=True)
         
             if return_dataloader: return data_loader
             else: return data
-
-
-    # TODO: potentially move this to a different file based on multi-gpu solution
-    def train_on_single_device(self):
-        """Trains the network"""
-
-        # load training / validation datasets
-        train_loader = self.load_data("training", self.training_set_fraction)
-        valid_loader = self.load_data("validation")
-
-        # store training data as nested lists with dims [nps, nz]
-        self.train_loss     = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
-        self.valid_loss     = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
-        best_loss           = [[torch.inf for i in range(self.num_zbins)] for j in range(self.num_spectra)]
-        epochs_since_update = [[0 for i in range(self.num_zbins)] for j in range(self.num_spectra)]
-        self.train_time = 0.
-        if self.print_progress: print("Initial learning rate = {:0.2e}".format(self.learning_rate), flush=True)
-        
-        self._set_optimizer()
-
-        self.model.train()
-        start_time = time.time()
-        # loop thru epochs
-        for epoch in range(self.num_epochs):
-            # loop thru individual networks
-            for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
-                if epochs_since_update[ps][z] > self.early_stopping_epochs:
-                    continue
-
-                training_loss = self._train_one_epoch(train_loader, [ps, z])
-                if self.recalculate_train_loss:
-                    self.train_loss[ps][z].append(calc_avg_loss(self.model, train_loader, self.input_normalizations, 
-                                                                self.ps_fid, self.invcov_full, self.sqrt_eigvals, 
-                                                                self.Q, self.Q_inv, self.loss_function, [ps, z]))
-                else:
-                    self.train_loss[ps][z].append(training_loss)
-                self.valid_loss[ps][z].append(calc_avg_loss(self.model, valid_loader, self.input_normalizations, 
-                                                            self.ps_fid, self.invcov_full, self.sqrt_eigvals, 
-                                                            self.Q, self.Q_inv, self.loss_function, [ps, z]))
-                
-                self.scheduler[ps][z].step(self.valid_loss[ps][z][-1])
-                self.train_time = time.time() - start_time
-
-                if self.valid_loss[ps][z][-1] < best_loss[ps][z]:
-                    best_loss[ps][z] = self.valid_loss[ps][z][-1]
-                    epochs_since_update[ps][z] = 0
-                    self._save_model()
-                else:
-                    epochs_since_update[ps][z] += 1
-
-                if self.print_progress: print("Net idx : [{:d}, {:d}], Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(
-                    ps, z, epoch, self.train_loss[ps][z][-1], self.valid_loss[ps][z][-1], epochs_since_update[ps][z]), flush=True)
-                if epochs_since_update[ps][z] > self.early_stopping_epochs:
-                    print("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[ps][z]), flush=True)
-
 
     def get_power_spectra(self, params, raw_output:bool = False):
         """Gets the power spectra corresponding to the given input params by passing them though the emulator
@@ -175,21 +121,22 @@ class pk_emulator():
         """
 
         # TODO: Add k-bin check (it should match the covariance matrix)
-        self.model.eval()
+        self.galaxy_ps_model.eval()
         with torch.no_grad():
             params = self._check_params(params)
-            pk = self.model.forward(params) # <- shape [nb, nps, nz, nk*nl]
+            galaxy_ps = self.galaxy_ps_model.forward(params) # <- shape [nb, nps, nz, nk*nl]
             
             if raw_output:
-                return pk
+                return galaxy_ps
             else:
-                pk = un_normalize_power_spectrum(torch.flatten(pk, start_dim=3), self.ps_fid, self.sqrt_eigvals, self.Q, self.Q_inv)
+                galaxy_ps = un_normalize_power_spectrum(torch.flatten(galaxy_ps, start_dim=3), self.ps_fid, self.sqrt_eigvals, self.Q, self.Q_inv)
                 if params.shape[0] == 1:
-                    pk = pk.view(self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
+                    galaxy_ps = galaxy_ps.view(self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
                 else:
-                    pk = pk.view(-1, self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
-                pk = pk.to("cpu").detach().numpy()
-                return pk        
+                    galaxy_ps = galaxy_ps.view(-1, self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
+                galaxy_ps = galaxy_ps.to("cpu").detach().numpy()
+
+                return galaxy_ps        
 
     def get_required_parameters(self):
         """Returns a dictionary of input parameters needed by the emulator. Used within Cosmo_Inference"""
@@ -200,6 +147,7 @@ class pk_emulator():
         counterterm_params = ["counterterm_0", "counterterm_2", "counterterm_fog"]
         required_params = {"cosmo_params":cosmo_params, "galaxy_bias_params":bias_params, "counterterm_params": counterterm_params}
         return required_params
+
 
     # -----------------------------------------------------------
     # Helper methods: Not meant to be called by the user directly
@@ -216,16 +164,17 @@ class pk_emulator():
 
 
     def _init_model(self):
-        """Initializes the network"""
+        """Initializes the networks"""
         self.num_spectra = self.num_tracers + math.comb(self.num_tracers, 2)
         if self.model_type == "stacked_mlp":
-            self.model = stacked_mlp(self.config_dict).to(self.device)
+            self.galaxy_ps_model = stacked_mlp(self.config_dict).to(self.device)
         elif self.model_type == "stacked_transformer":
-            self.model = stacked_transformer(self.config_dict).to(self.device)
+            self.galaxy_ps_model = stacked_transformer(self.config_dict).to(self.device)
         else:
             print("ERROR: Invalid value for model_type", self.model_type)
             raise KeyError
-                
+        
+        self.nw_ps_model = single_transformer(self.config_dict).to(self.device)
 
     def _init_input_normalizations(self):
         """Initializes input parameter normalization factors
@@ -241,16 +190,15 @@ class pk_emulator():
             input_normalizations = torch.vstack((torch.zeros((self.num_cosmo_params + (self.num_tracers*self.num_zbins*self.num_nuisance_params))),
                                                  torch.ones((self.num_cosmo_params + (self.num_tracers*self.num_zbins*self.num_nuisance_params))))).to(self.device)
         
-        lower_bounds = self.model.organize_parameters(input_normalizations[0].unsqueeze(0))
-        upper_bounds = self.model.organize_parameters(input_normalizations[1].unsqueeze(0))
+        lower_bounds = self.galaxy_ps_model.organize_parameters(input_normalizations[0].unsqueeze(0))
+        upper_bounds = self.galaxy_ps_model.organize_parameters(input_normalizations[1].unsqueeze(0))
         self.input_normalizations = torch.vstack([lower_bounds, upper_bounds])
 
 
     def _init_fiducial_power_spectrum(self):
-        """Loads the fiducial power spectrum for use in normalization"""
+        """Loads the fiducial galaxy and non-wiggle power spectrum for use in normalization"""
 
         ps_file = self.input_dir+self.training_dir+"ps_fid.npy"
-
         if os.path.exists(ps_file):
             self.ps_fid = torch.from_numpy(np.load(ps_file)).to(torch.float32).to(self.device)[0]
 
@@ -261,8 +209,13 @@ class pk_emulator():
                 self.ps_fid = torch.permute(self.ps_fid, (1, 0, 2, 3))
             self.ps_fid = self.ps_fid.reshape(self.num_spectra, self.num_zbins, self.num_kbins * self.num_ells)
         else:
-            self.ps_fid = torch.zeros((self.num_spectra, self.num_zbins,  self.num_kbins * self.num_ells)).to(self.device)
+            self.ps_fid = torch.zeros((self.num_spectra, self.num_zbins, self.num_kbins * self.num_ells)).to(self.device)
 
+        ps_file = self.input_dir+self.training_dir+"ps_nw_fid.npy"
+        if os.path.exists(ps_file):
+            self.ps_nw_fid = torch.from_numpy(np.load(ps_file)).to(torch.float32).to(self.device)[0]
+        else:
+            self.ps_nw_fid = torch.zeros(self.nw_ps_model["num_kbins"])
 
     def _init_inverse_covariance(self):
         """Loads the inverse data covariance matrix for use in certain loss functions and normalizations"""
@@ -344,7 +297,18 @@ class pk_emulator():
         elif isinstance(m, blocks.linear_with_channels):
             m.initialize_params(self.weight_initialization)
 
-    def _set_optimizer(self):
+
+    def _init_training_stats(self):
+        # store training data as nested lists with dims [nps, nz]
+        self.train_loss = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
+        self.valid_loss = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
+        
+        self.nw_train_loss = []
+        self.nw_valid_loss = []
+
+        self.train_time = 0.
+
+    def _init_optimizer(self):
         """Sets optimization objects, one for each sub-network"""
 
         self.optimizer = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
@@ -352,7 +316,7 @@ class pk_emulator():
         for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
             net_idx = (z * self.num_spectra) + ps
             if self.optimizer_type == "Adam":
-                self.optimizer[ps][z] = torch.optim.Adam(self.model.networks[net_idx].parameters(), 
+                self.optimizer[ps][z] = torch.optim.Adam(self.galaxy_ps_model.networks[net_idx].parameters(), 
                                                          lr=self.learning_rate)
             else:
                 print("Error! Invalid optimizer type specified!")
@@ -360,6 +324,11 @@ class pk_emulator():
             # use an adaptive learning rate
             self.scheduler[ps][z] = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer[ps][z],
                                     "min", factor=0.1, patience=15)
+
+        # seperate optimizer for the non-wiggle power spectrum network
+        self.nw_optimizer = torch.optim.Adam(self.nw_ps_model.parameters(), lr=self.learning_rate)
+        self.nw_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.nw_optimizer, "min", factor=0.1, patience=15)
+
 
     def _save_model(self):
         """saves the current model state and normalization information to file"""
@@ -371,6 +340,8 @@ class pk_emulator():
         if not os.path.exists(self.input_dir+self.save_dir+"training_statistics"):
             os.mkdir(self.input_dir+self.save_dir+"training_statistics")
 
+        nw_training_data = torch.vstack([torch.Tensor(self.nw_train_loss), torch.Tensor(self.nw_valid_loss)])
+        torch.save(nw_training_data, self.input_dir+self.save_dir+"training_statistics/train_data_nw.dat")
         for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
             training_data = torch.vstack([torch.Tensor(self.train_loss[ps][z]), 
                                           torch.Tensor(self.valid_loss[ps][z]),
@@ -382,18 +353,19 @@ class pk_emulator():
         with open(self.input_dir+self.save_dir+'config.yaml', 'w') as outfile:
             yaml.dump(dict(self.config_dict), outfile, sort_keys=False, default_flow_style=False)
 
-        # data related to input parameters
-        # TODO: combine these into one file
+        # data related to input normalization
         torch.save(self.input_normalizations, self.input_dir+self.save_dir+"input_normalizations.pt")
         with open(self.input_dir+self.save_dir+"param_names.txt", "w") as outfile:
             yaml.dump(self.get_required_parameters(), outfile, sort_keys=False, default_flow_style=False)
 
         # data related to output normalization
-        output_files = [self.ps_fid, self.invcov_full, self.invcov_blocks, self.sqrt_eigvals, self.Q]
+        output_files = [self.ps_fid, self.ps_nw_fid, self.invcov_full, self.invcov_blocks, self.sqrt_eigvals, self.Q]
         torch.save(output_files, self.input_dir+self.save_dir+"output_normalizations.pt")
 
         # Finally, the actual model parameters
-        torch.save(self.model.state_dict(), self.input_dir+self.save_dir+'network.params')
+        torch.save(self.galaxy_ps_model.state_dict(), self.input_dir+self.save_dir+'network_galaxy.params')
+        torch.save(self.nw_ps_model.state_dict(), self.input_dir+self.save_dir+'network_nw.params')
+
 
     def _check_params(self, params):
         """checks that input parameters are in the expected format and within the specified boundaries"""
@@ -402,7 +374,7 @@ class pk_emulator():
         else: params = torch.from_numpy(params).to(torch.float32).to(self.device)
 
         if params.dim() == 1: params = params.unsqueeze(0)
-        params = self.model.organize_parameters(params)
+        params = self.galaxy_ps_model.organize_parameters(params)
 
         if torch.any(params < self.input_normalizations[0]) or \
            torch.any(params > self.input_normalizations[1]):
@@ -410,39 +382,6 @@ class pk_emulator():
         
         norm_params = normalize_cosmo_params(params, self.input_normalizations)
         return norm_params
-
-    def _train_one_epoch(self, train_loader, bin_idx):
-        """basic training loop"""
-
-        total_loss = 0.
-        total_time = 0
-        ps_idx = bin_idx[0]
-        z_idx  = bin_idx[1]
-        net_idx = (z_idx * self.num_spectra) + ps_idx
-        for (i, batch) in enumerate(train_loader):
-            t1 = time.time()
-            
-            # setup input parameters
-            params = self.model.organize_parameters(batch[0])
-            params = normalize_cosmo_params(params, self.input_normalizations)
-            
-            target = torch.flatten(batch[1][:,ps_idx,z_idx], start_dim=1)
-            prediction = self.model.forward(params, net_idx)
-
-            # calculate loss and update network parameters
-            # TODO: Find better way to deal with passing invcov to the loss function
-            loss = self.loss_function(prediction, target, self.invcov_full, True)
-            assert torch.isnan(loss) == False
-            assert torch.isinf(loss) == False
-            self.optimizer[ps_idx][z_idx].zero_grad(set_to_none=True)
-            loss.backward()
-
-            self.optimizer[ps_idx][z_idx].step()
-            total_loss += loss.detach()
-            total_time += (time.time() - t1)
-
-        if self.print_progress: print("time for epoch: {:0.1f}s, time per batch: {:0.1f}ms".format(total_time, 1000*total_time / len(train_loader)), flush=True)
-        return (total_loss / len(train_loader))
 
 # --------------------------------------------------------------------------
 # extra helper function (TODO: Find a better place for this)

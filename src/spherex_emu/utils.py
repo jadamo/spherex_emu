@@ -6,6 +6,7 @@ import numpy as np
 import itertools
 import torch
 
+
 def load_config_file(config_file:str):
     """loads in the emulator config file as a dictionary object
     
@@ -20,6 +21,7 @@ def load_config_file(config_file:str):
             return None
     
     return config_dict
+
 
 def get_parameter_ranges(cosmo_dict):
     """Returns cosmology and bias parameter priors based on the input cosmo_dict
@@ -41,6 +43,7 @@ def get_parameter_ranges(cosmo_dict):
     priors = np.array(list(params_dict.values()))
     params = list(params_dict.keys())
     return params, priors
+
 
 def prepare_ps_inputs(sample, cosmo_dict, num_tracers, num_zbins):
     """takes a set of parameters and oragnizes them to the format expected by ps_1loop"""
@@ -79,16 +82,6 @@ def prepare_ps_inputs(sample, cosmo_dict, num_tracers, num_zbins):
 
     return np.array(param_vector)
 
-def fgrowth(z,Om0):
-    """Calculates the LambdaCDM growth rate f_growth(z, Om0)
-
-    Args:
-        z: cosmological redshift
-        Om0: matter density parameter
-    """
-    return(1. + 6*(Om0-1)*hyp2f1(4/3., 2, 17/6., (1-1/Om0)/(1+z)**3)
-                /( 11*Om0*(1+z)**3*hyp2f1(1/3., 1, 11/6., (1-1/Om0)/(1+z)**3) ))
-
 
 def make_latin_hypercube(priors, N):
     """Generates a latin hypercube of N samples with lower and upper bounds given by priors"""
@@ -122,7 +115,7 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
 
     all_params = np.array([], dtype=np.int64).reshape(0,param_dim)
     all_galaxy_ps = np.array([], dtype=np.int64).reshape(0, num_spectra, num_zbins, k_dim, num_ells)
-    all_ps_nw = np.array([], dtype=np.int64).reshape(0, 256)
+    all_nw_ps = np.array([], dtype=np.int64).reshape(0, 256)
 
     # load in all the data internally (NOTE: memory intensive!)
     # if "pk-raw.npz" in all_filenames:
@@ -134,12 +127,12 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
             print("loading " + file + "...")
             F = np.load(training_dir+file)
             params = F["params"]
-            galaxy_ps = F["gakaxy_ps"]
-            ps_nw = F["ps_nw"]
+            galaxy_ps = F["galaxy_ps"]
+            nw_ps = F["nw_ps"]
             del F
             all_params = np.vstack([all_params, params])
             all_galaxy_ps = np.vstack([all_galaxy_ps, galaxy_ps])
-            all_ps_nw = np.vstack([all_ps_nw, ps_nw])
+            all_nw_ps = np.vstack([all_nw_ps, nw_ps])
 
     N = all_params.shape[0]
     N_train = int(N * train_frac)
@@ -162,15 +155,15 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
     np.savez(training_dir+"pk-training.npz", 
                 params=all_params[0:N_train],
                 galaxy_ps=all_galaxy_ps[0:N_train],
-                ps_nw=all_ps_nw[0:N_train])
+                nw_ps=all_nw_ps[0:N_train])
     np.savez(training_dir+"pk-validation.npz", 
                 params=all_params[valid_start:valid_end], 
                 galaxy_ps=all_galaxy_ps[valid_start:valid_end],
-                ps_nw=all_ps_nw[valid_start:valid_end])
+                nw_ps=all_nw_ps[valid_start:valid_end])
     np.savez(training_dir+"pk-testing.npz", 
                 params=all_params[valid_end:test_end], 
                 galaxy_ps=all_galaxy_ps[valid_end:test_end],
-                ps_nw=all_ps_nw[valid_end:test_end]) 
+                nw_ps=all_nw_ps[valid_end:test_end]) 
 
 
 def get_full_invcov(cov, num_zbins):
@@ -179,6 +172,7 @@ def get_full_invcov(cov, num_zbins):
     for z in range(num_zbins):
         invcov[z] = torch.linalg.inv(cov[z])
     return invcov
+
 
 def get_invcov_blocks(cov, num_spectra, num_zbins, num_kbins, num_ells):
 
@@ -242,26 +236,31 @@ def delta_chi_squared(predict, target, invcov, normalized=False):
 
 
 def calc_avg_loss(net, data_loader, input_normalizations, 
-                  ps_fid, invcov, sqrt_eigvals, Q, Q_inv, loss_function, bin_idx=None):
+                  invcov, loss_function, bin_idx=None, mode="galaxy_ps"):
     """run thru the given data set and returns the average loss value"""
 
     # if net_idx not specified, recursively call the function with all possible values
-    if bin_idx == None:
+    if bin_idx == None and mode == "galaxy_ps":
         total_loss = torch.zeros(net.num_spectra, net.num_zbins, requires_grad=False)
         for (ps, z) in itertools.product(range(net.num_spectra), range(net.num_zbins)):
             total_loss[ps, z] = calc_avg_loss(net, data_loader, input_normalizations, 
-                                ps_fid, invcov, sqrt_eigvals, Q, Q_inv, loss_function, [ps, z])
+                                              invcov, loss_function, [ps, z], mode)
         return total_loss
     
     net.eval()
     avg_loss = 0.
-    net_idx = (bin_idx[1] * net.num_spectra) + bin_idx[0]
     with torch.no_grad():
         for (i, batch) in enumerate(data_loader):
-            params = net.organize_parameters(batch[0])
-            params = normalize_cosmo_params(params, input_normalizations)
-            prediction = net(params, net_idx)
-            target = torch.flatten(batch[1][:,bin_idx[0],bin_idx[1]], start_dim=1)
+            if mode == "galaxy_ps":
+                params = net.organize_parameters(batch[0])
+                params = normalize_cosmo_params(params, input_normalizations)
+                prediction = net(params, (bin_idx[1] * net.num_spectra) + bin_idx[0])
+                target = torch.flatten(batch[1][:,bin_idx[0],bin_idx[1]], start_dim=1)
+            elif mode == "nw_ps":
+                params = batch[0][:,:net.input_dim]
+                params = normalize_cosmo_params(params, input_normalizations[:,0,:net.input_dim])
+                prediction = net(params)
+                target = batch[2]
 
             avg_loss += loss_function(prediction, target, invcov, True).item()
 
@@ -272,6 +271,7 @@ def normalize_cosmo_params(params, normalizations):
     return (params - normalizations[0]) / (normalizations[1] - normalizations[0])
 
 
+# TODO: Move these to dataset.py
 def normalize_power_spectrum(ps_raw, ps_fid, sqrt_eigvals, Q):
 
     # assumes ps has shape [b, nps, z, nk*nl]

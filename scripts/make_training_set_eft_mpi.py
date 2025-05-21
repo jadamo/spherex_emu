@@ -55,7 +55,7 @@ def get_power_spectrum(samples, k, param_names, cosmo_dict, ps_config, theory):
     galaxy_ps = np.zeros((num_to_calculate, num_spectra, num_zbins, len(k), len(ells)))
 
     k_lin = np.geomspace(np.min(k)*0.9, np.max(k)*1.1, 256)
-    ps_nw = np.zeros((num_to_calculate, len(k_lin)))
+    nw_ps = np.zeros((num_to_calculate, len(k_lin)))
     result = np.zeros(num_to_calculate)
 
     for idx in range(num_to_calculate):
@@ -64,13 +64,13 @@ def get_power_spectrum(samples, k, param_names, cosmo_dict, ps_config, theory):
         try:
             ps = theory(k, ells, param_vector) / cosmo_dict["cosmo_params"]["h"]["value"]**3
             ps = np.transpose(ps, (1, 0, 3, 2))
-            pk_nw = theory.model.irres.get_pk_nw(k_lin)
+            pk_nw = theory._model.irres.get_pk_nw(k_lin)
             if not np.any(np.isnan(ps)) and \
                not np.any(np.isinf(ps)) and \
                not np.any(np.isnan(pk_nw)) and \
                not np.any(np.isinf(pk_nw)) : 
                 galaxy_ps[idx] = ps
-                ps_nw[idx] = pk_nw
+                nw_ps[idx] = pk_nw
             else: 
                 print("Power spectrum calculation failed!")
                 result[idx] = -1
@@ -78,7 +78,7 @@ def get_power_spectrum(samples, k, param_names, cosmo_dict, ps_config, theory):
             print("Power spectrum calculation failed!")
             result[idx] = -1
 
-    return galaxy_ps, result
+    return galaxy_ps, nw_ps, result
 #-------------------------------------------------------------------
 # MAIN
 #-------------------------------------------------------------------
@@ -145,9 +145,10 @@ def main():
 
         # first, generate the power spectrum at the fiducial cosmology
         print("Generating fiducial power spectrum...")
-        pk, result = get_power_spectrum([{}], k, param_names, cosmo_dict, ps_config, theory)
+        galaxy_ps, nw_ps, result = get_power_spectrum([{}], k, param_names, cosmo_dict, ps_config, theory)
         if result == 0:
-            np.save(save_dir+"ps_fid.npy", pk)
+            np.save(save_dir+"ps_fid.npy", galaxy_ps)
+            np.save(save_dir+"nw_ps_fid.npy", nw_ps)
             np.savez(save_dir+"kbins.npz", k=k)
         else:
             print("ERROR! failed to calculate fiducial power spectrum! Exiting...")
@@ -156,30 +157,31 @@ def main():
     t1 = time.time()
     if rank == 0: print("Generating", str(int(N)), "power spectra across", str(size), "processors ("+str(int(N / size))+" per processor)...")
 
-    galaxy_ps, ps_nw, result = get_power_spectrum(rank_samples, k, param_names, cosmo_dict, ps_config, theory)
+    galaxy_ps, nw_ps, result = get_power_spectrum(rank_samples, k, param_names, cosmo_dict, ps_config, theory)
 
     # aggregate data
     galaxy_ps = np.array(galaxy_ps)
-    ps_nw = np.array(ps_nw)
+    nw_ps = np.array(nw_ps)
     result = np.array(result)
 
     idx_pass = np.where(result == 0)[0]
     fail_compute = len(np.where(result == -1)[0])
 
     galaxy_ps = galaxy_ps[idx_pass]
-    ps_nw = ps_nw[idx_pass]
+    nw_ps = nw_ps[idx_pass]
     rank_samples = rank_samples[idx_pass]
 
     dataset_info = prepare_header_info(param_names, cosmo_dict, N - fail_compute)
 
-    if pk.shape[0] > 1:
-        np.savez(save_dir+"pk-raw_"+str(rank)+"_.npz", params=rank_samples, galaxy_ps=galaxy_ps, ps_nw=ps_nw)
+    if galaxy_ps.shape[0] > 1:
+        np.savez(save_dir+"pk-raw_"+str(rank)+"_.npz", params=rank_samples, galaxy_ps=galaxy_ps, nw_ps=nw_ps)
     
     if rank == 0:
         with open(save_dir+'info.yaml', 'w') as outfile:
             yaml.dump(dataset_info, outfile, sort_keys=False, default_flow_style=False)
 
-    del pk
+    del galaxy_ps
+    del nw_ps
 
     t2 = time.time()
     print("Rank {:d} Done! Took {:0.0f} hours {:0.0f} minutes".format(rank, math.floor((t2 - t1)/3600), math.floor((t2 - t1)/60%60)))
@@ -190,7 +192,7 @@ def main():
     if rank == 0:
         print("\nRe-organizing data to training / validation / test sets...")
         organize_training_set(save_dir, train_frac, valid_frac, test_frac,
-                            rank_samples.shape[1], len(z_eff), num_spectra, len(ells), len(k), True)
+                              rank_samples.shape[1], len(z_eff), num_spectra, len(ells), len(k), True)
 
 if __name__ == "__main__":
     main()
