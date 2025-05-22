@@ -402,9 +402,17 @@ def compile_multiple_device_training_results(save_dir, config_dir, num_gpus):
         sub_dir = "rank_"+str(n) + "/"
         seperate_network = pk_emulator(save_dir+sub_dir, "eval")
 
+        # non-wiggle power spectrum network
+        if n == 0:
+            full_emulator.nw_ps_model = seperate_network.nw_ps_model
+            train_data = torch.load(save_dir+sub_dir+"training_statistics/train_data_nw.dat", weights_only=True)
+            full_emulator.nw_train_loss = train_data[0,:]
+            full_emulator.nw_valid_loss = train_data[1,:]
+
+        # galaxy power spectrum networks
         for (ps, z) in split_indices[n]:
             net_idx = (z * full_emulator.num_spectra) + ps
-            full_emulator.model.networks[net_idx] = seperate_network.model.networks[net_idx]
+            full_emulator.galaxy_ps_model.networks[net_idx] = seperate_network.galaxy_ps_model.networks[net_idx]
 
             train_data = torch.load(save_dir+sub_dir+"training_statistics/train_data_"+str(int(ps))+"_"+str(int(z))+".dat", weights_only=True)
             epochs = train_data.shape[1]
