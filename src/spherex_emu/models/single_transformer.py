@@ -45,6 +45,7 @@ class single_transformer(nn.Module):
                     blocks.activation_function(embedding_dim))
 
         self.output_layer = nn.Linear(embedding_dim, self.output_dim)
+        self.output_activation = nn.Sigmoid()
 
     def forward(self, input_params):
         """Passes an input tensor through the network"""
@@ -55,7 +56,7 @@ class single_transformer(nn.Module):
         X = self.mlp_blocks(X)
         X = self.embedding_layer(X)
         X = self.transformer_blocks(X)
-        X = self.output_layer(X)
-
+        X = self.output_activation(self.output_layer(X)) * 5 - 1.
+     
         return X
         

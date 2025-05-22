@@ -68,16 +68,19 @@ class pk_emulator():
 
         print("loading emulator from " + path)
         self.galaxy_ps_model.eval()
-        self.galaxy_ps_model.load_state_dict(torch.load(path+'network.params', map_location=self.device))
-        
+        self.nw_ps_model.eval()
+        self.galaxy_ps_model.load_state_dict(torch.load(path+'network_galaxy.params', weights_only=True, map_location=self.device))
+        self.nw_ps_model.load_state_dict(torch.load(path+'network_nw.params', weights_only=True, map_location=self.device))
+
         self.input_normalizations = torch.load(path+"input_normalizations.pt", map_location=self.device, weights_only=True)
 
         output_norm_data = torch.load(path+"output_normalizations.pt", map_location=self.device, weights_only=True)
         self.ps_fid        = output_norm_data[0]
-        self.invcov_full   = output_norm_data[1]
-        self.invcov_blocks = output_norm_data[2]
-        self.sqrt_eigvals  = output_norm_data[3]
-        self.Q             = output_norm_data[4]
+        self.ps_nw_fid     = output_norm_data[1]
+        self.invcov_full   = output_norm_data[2]
+        self.invcov_blocks = output_norm_data[3]
+        self.sqrt_eigvals  = output_norm_data[4]
+        self.Q             = output_norm_data[5]
         self.Q_inv = torch.zeros_like(self.Q, device="cpu")
         for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
             self.Q_inv[ps, z] = torch.linalg.inv(self.Q[ps, z].to("cpu").to(torch.float64)).to(torch.float32)
@@ -390,7 +393,8 @@ def compile_multiple_device_training_results(save_dir, config_dir, num_gpus):
     """takes networks saved on seperate ranks and combines them to the same format as when training on one device"""
 
     full_emulator = pk_emulator(config_dir, "train")
-    full_emulator.model.eval()
+    full_emulator.galaxy_ps_model.eval()
+    full_emulator.nw_ps_model.eval()
 
     net_idx = torch.Tensor(list(itertools.product(range(full_emulator.num_spectra), range(full_emulator.num_zbins)))).to(int)
     split_indices = net_idx.chunk(num_gpus)

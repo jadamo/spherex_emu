@@ -62,7 +62,8 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self.galaxy_ps = normalize_power_spectrum(torch.flatten(self.galaxy_ps, start_dim=3), ps_fid, sqrt_eigvals, Q)
         self.galaxy_ps = self.galaxy_ps.reshape(-1, self.num_spectra, self.num_zbins, self.num_kbins*self.num_ells)
 
-        self.nw_ps = torch.log(self.nw_ps) - torch.log(ps_nw_fid)
+        #self.nw_ps = torch.log(self.nw_ps) - torch.log(ps_nw_fid)
+        self.nw_ps = (self.nw_ps / ps_nw_fid) - 1.
 
     def get_normalized_galaxy_power_spectra(self, idx):
         
@@ -88,5 +89,6 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         return ps_true
     
     def get_true_nonwiggle_power_spectra(self, idx, ps_nw_fid):
-        return torch.exp(self.nw_ps[idx]) + ps_nw_fid
+        #return torch.exp(self.nw_ps[idx]) + ps_nw_fid
+        return (self.nw_ps[idx] + 1.) * ps_nw_fid
 

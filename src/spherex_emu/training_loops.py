@@ -155,8 +155,8 @@ def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
     train_loader = emulator.load_data("training", emulator.training_set_fraction)
     valid_loader = emulator.load_data("validation")
 
-    best_loss           = [[torch.inf for i in range(emulator.num_zbins)] for j in range(emulator.num_spectra)]
-    epochs_since_update = [[0 for i in range(emulator.num_zbins)] for j in range(emulator.num_spectra)]
+    best_loss           = [torch.inf for i in range(emulator.num_zbins*emulator.num_spectra + 1)]
+    epochs_since_update = [0 for i in range(emulator.num_zbins*emulator.num_spectra + 1)]
     emulator._init_training_stats()
     emulator._init_optimizer()
 
@@ -169,10 +169,10 @@ def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
         # loop thru individual networks
         for (ps, z) in net_indeces[gpu_id]:
             net_idx = (z * emulator.num_spectra) + ps
-            if epochs_since_update[ps][z] > emulator.early_stopping_epochs:
+            if epochs_since_update[net_idx] > emulator.early_stopping_epochs:
                 continue
 
-            training_loss = emulator.train_one_epoch(train_loader, [ps, z])
+            training_loss = train_galaxy_ps_one_epoch(emulator, train_loader, [ps, z])
             if emulator.recalculate_train_loss:
                 emulator.train_loss[ps][z].append(calc_avg_loss(emulator.galaxy_ps_model, train_loader, emulator.input_normalizations, 
                                                                 emulator.invcov_full, emulator.loss_function, [ps, z], "galaxy_ps"))
@@ -193,7 +193,7 @@ def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
 
             if emulator.print_progress: print("GPU: {:d}, Net idx : [{:d}, {:d}], Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(
                 gpu_id, ps, z, epoch, emulator.train_loss[ps][z][-1], emulator.valid_loss[ps][z][-1], epochs_since_update[net_idx]), flush=True)
-            if epochs_since_update[ps][z] > emulator.early_stopping_epochs:
+            if epochs_since_update[net_idx] > emulator.early_stopping_epochs:
                 print("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[net_idx]), flush=True)
 
         # train non-wiggle power spectrum network        
