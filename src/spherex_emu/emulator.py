@@ -49,6 +49,10 @@ class pk_emulator():
             self._diagonalize_covariance()
             self._init_input_normalizations()
             self.galaxy_ps_model.apply(self._init_weights)
+            self.nw_ps_model.apply(self._init_weights)
+
+            self.galaxy_ps_checkpoint = self.galaxy_ps_model.state_dict()
+            self.nw_ps_checkpoint = self.nw_ps_model.state_dict()
 
         elif mode == "eval":
             self.load_trained_model(net_dir)
@@ -178,6 +182,7 @@ class pk_emulator():
             raise KeyError
         
         self.nw_ps_model = single_transformer(self.config_dict).to(self.device)
+
 
     def _init_input_normalizations(self):
         """Initializes input parameter normalization factors
@@ -333,6 +338,19 @@ class pk_emulator():
         self.nw_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.nw_optimizer, "min", factor=0.1, patience=15)
 
 
+    def _update_checkpoint(self, net_idx=0, mode="galaxy_ps"):
+        """saves current best network to an independent state_dict"""
+        if mode == "galaxy_ps":
+            new_checkpoint = self.galaxy_ps_model.state_dict()
+            for name in new_checkpoint.keys():
+                if "networks."+str(net_idx) in name:
+                    self.galaxy_ps_checkpoint[name] = new_checkpoint[name]
+        elif mode=="nw_ps":
+            self.nw_ps_checkpoint = self.nw_ps_model.state_dict()
+
+        self._save_model()
+
+
     def _save_model(self):
         """saves the current model state and normalization information to file"""
 
@@ -356,18 +374,18 @@ class pk_emulator():
         with open(self.input_dir+self.save_dir+'config.yaml', 'w') as outfile:
             yaml.dump(dict(self.config_dict), outfile, sort_keys=False, default_flow_style=False)
 
-        # data related to input normalization
+        # data related for input normalization
         torch.save(self.input_normalizations, self.input_dir+self.save_dir+"input_normalizations.pt")
         with open(self.input_dir+self.save_dir+"param_names.txt", "w") as outfile:
             yaml.dump(self.get_required_parameters(), outfile, sort_keys=False, default_flow_style=False)
 
-        # data related to output normalization
+        # data related for output normalization
         output_files = [self.ps_fid, self.ps_nw_fid, self.invcov_full, self.invcov_blocks, self.sqrt_eigvals, self.Q]
         torch.save(output_files, self.input_dir+self.save_dir+"output_normalizations.pt")
 
         # Finally, the actual model parameters
-        torch.save(self.galaxy_ps_model.state_dict(), self.input_dir+self.save_dir+'network_galaxy.params')
-        torch.save(self.nw_ps_model.state_dict(), self.input_dir+self.save_dir+'network_nw.params')
+        torch.save(self.galaxy_ps_checkpoint, self.input_dir+self.save_dir+'network_galaxy.params')
+        torch.save(self.nw_ps_checkpoint, self.input_dir+self.save_dir+'network_nw.params')
 
 
     def _check_params(self, params):

@@ -61,6 +61,8 @@ def train_nw_ps_one_epoch(emulator:pk_emulator, train_loader):
         emulator.nw_optimizer.zero_grad(set_to_none=True)
         loss.backward()
 
+        # gradient clipping
+        torch.nn.utils.clip_grad_norm_(emulator.nw_ps_model.parameters(), 1e8)    
         emulator.nw_optimizer.step()
         total_loss += loss.detach()
         total_time += (time.time() - t1)
@@ -109,7 +111,7 @@ def train_on_single_device(emulator:pk_emulator):
             if emulator.valid_loss[ps][z][-1] < best_loss[net_idx]:
                 best_loss[net_idx] = emulator.valid_loss[ps][z][-1]
                 epochs_since_update[net_idx] = 0
-                emulator._save_model()
+                emulator._update_checkpoint(net_idx, "galaxy_ps")
             else:
                 epochs_since_update[net_idx] += 1
 
@@ -132,7 +134,7 @@ def train_on_single_device(emulator:pk_emulator):
         if emulator.nw_valid_loss[-1] < best_loss[-1]:
             best_loss[-1] = emulator.nw_valid_loss[-1]
             epochs_since_update[-1] = 0
-            emulator._save_model()
+            emulator._update_checkpoint(mode="nw_ps")
         else:
             epochs_since_update[-1] += 1
 
@@ -187,7 +189,7 @@ def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
             if emulator.valid_loss[ps][z][-1] < best_loss[net_idx]:
                 best_loss[net_idx] = emulator.valid_loss[ps][z][-1]
                 epochs_since_update[net_idx] = 0
-                emulator._save_model()
+                emulator._update_checkpoint(net_idx, "galaxy_ps")
             else:
                 epochs_since_update[net_idx] += 1
 
@@ -208,7 +210,7 @@ def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
             if emulator.nw_valid_loss[-1] < best_loss[-1]:
                 best_loss[-1] = emulator.nw_valid_loss[-1]
                 epochs_since_update[-1] = 0
-                emulator._save_model()
+                emulator._update_checkpoint(mode="nw_ps")
             else:
                 epochs_since_update[-1] += 1
 
