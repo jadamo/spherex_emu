@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.multiprocessing as mp
 import numpy as np
-import yaml, math, os, time
+import yaml, math, os, copy
 import itertools
 
 from spherex_emu.models import blocks
@@ -51,8 +51,8 @@ class pk_emulator():
             self.galaxy_ps_model.apply(self._init_weights)
             self.nw_ps_model.apply(self._init_weights)
 
-            self.galaxy_ps_checkpoint = self.galaxy_ps_model.state_dict()
-            self.nw_ps_checkpoint = self.nw_ps_model.state_dict()
+            self.galaxy_ps_checkpoint = copy.deepcopy(self.galaxy_ps_model.state_dict())
+            self.nw_ps_checkpoint = copy.deepcopy(self.nw_ps_model.state_dict())
 
         elif mode == "eval":
             self.load_trained_model(net_dir)
@@ -223,7 +223,7 @@ class pk_emulator():
         if os.path.exists(ps_file):
             self.ps_nw_fid = torch.from_numpy(np.load(ps_file)).to(torch.float32).to(self.device)[0]
         else:
-            self.ps_nw_fid = torch.zeros(self.nw_ps_model["num_kbins"])
+            self.ps_nw_fid = torch.zeros(self.config_dict["ps_nw_emulator"]["num_kbins"])
 
     def _init_inverse_covariance(self):
         """Loads the inverse data covariance matrix for use in certain loss functions and normalizations"""
@@ -345,6 +345,7 @@ class pk_emulator():
             for name in new_checkpoint.keys():
                 if "networks."+str(net_idx) in name:
                     self.galaxy_ps_checkpoint[name] = new_checkpoint[name]
+
         elif mode=="nw_ps":
             self.nw_ps_checkpoint = self.nw_ps_model.state_dict()
 

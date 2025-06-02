@@ -25,7 +25,7 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         data = np.load(file)
         self.params = torch.from_numpy(data["params"]).to(torch.float32)
         self.galaxy_ps = torch.from_numpy(data["galaxy_ps"]).to(torch.float32)
-        self.nw_ps = torch.from_numpy(data["ps_nw"]).to(torch.float32)
+        self.nw_ps = torch.from_numpy(data["nw_ps"]).to(torch.float32)
         del data
 
         header_info = load_config_file(data_dir+"info.yaml")
