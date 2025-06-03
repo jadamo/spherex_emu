@@ -443,7 +443,7 @@ def compile_multiple_device_training_results(save_dir, config_dir, num_gpus):
             full_emulator.train_loss[ps, z, :epochs] = train_data[0,:]
             full_emulator.valid_loss[ps, z, :epochs] = train_data[1,:]
 
-    full_emulator.galaxy_ps_checkpoint = full_emulator.galaxy_ps_model.state_dict()
-    full_emulator.nw_ps_checkpoint = full_emulator.galaxy_ps_model.state_dict()
+    full_emulator.galaxy_ps_checkpoint = copy.deepcopy(full_emulator.galaxy_ps_model.state_dict())
+    full_emulator.nw_ps_checkpoint = copy.deepcopy(full_emulator.nw_ps_model.state_dict())
     
     return full_emulator
