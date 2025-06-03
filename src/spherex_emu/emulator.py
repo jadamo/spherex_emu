@@ -325,7 +325,7 @@ class pk_emulator():
             net_idx = (z * self.num_spectra) + ps
             if self.optimizer_type == "Adam":
                 self.optimizer[ps][z] = torch.optim.Adam(self.galaxy_ps_model.networks[net_idx].parameters(), 
-                                                         lr=self.learning_rate)
+                                                         lr=self.galaxy_ps_learning_rate)
             else:
                 print("Error! Invalid optimizer type specified!")
 
@@ -334,7 +334,7 @@ class pk_emulator():
                                     "min", factor=0.1, patience=15)
 
         # seperate optimizer for the non-wiggle power spectrum network
-        self.nw_optimizer = torch.optim.Adam(self.nw_ps_model.parameters(), lr=self.learning_rate)
+        self.nw_optimizer = torch.optim.Adam(self.nw_ps_model.parameters(), lr=self.nw_ps_learning_rate)
         self.nw_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.nw_optimizer, "min", factor=0.1, patience=15)
 
 
@@ -346,7 +346,7 @@ class pk_emulator():
                 if "networks."+str(net_idx) in name:
                     self.galaxy_ps_checkpoint[name] = new_checkpoint[name]
 
-        elif mode=="nw_ps":
+        elif mode == "nw_ps":
             self.nw_ps_checkpoint = self.nw_ps_model.state_dict()
 
         self._save_model()
