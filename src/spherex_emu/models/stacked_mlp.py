@@ -29,19 +29,23 @@ class single_mlp(nn.Module):
             self.input_dim = config_dict["num_cosmo_params"] + config_dict["num_nuisance_params"]
         else:
             self.input_dim = config_dict["num_cosmo_params"] + (2 * config_dict["num_nuisance_params"])
-        self.output_dim = self.num_ells * self.num_kbins
+
+        if config_dict["normalization_type"] == "normal":
+            self.output_dim = self.num_ells * self.num_kbins
+        elif config_dict["normalization_type"] == "pca":
+            self.output_dim = config_dict["num_pcs"]
 
         # mlp blocks
-        self.input_layer = nn.Linear(self.input_dim, config_dict["mlp_dims"][0])
+        self.input_layer = nn.Linear(self.input_dim, self.output_dim)
         self.mlp_blocks = nn.Sequential()
-        for i in range(config_dict["num_mlp_blocks"]):
+        for i in range(config_dict["galaxy_ps_emulator"]["num_mlp_blocks"]):
             self.mlp_blocks.add_module("ResNet"+str(i+1),
-                    blocks.block_resnet(config_dict["mlp_dims"][i],
-                                        config_dict["mlp_dims"][i+1],
-                                        config_dict["num_block_layers"],
-                                        config_dict["use_skip_connection"]))
+                    blocks.block_resnet(self.output_dim,
+                                        self.output_dim,
+                                        config_dict["galaxy_ps_emulator"]["num_block_layers"],
+                                        config_dict["galaxy_ps_emulator"]["use_skip_connection"]))
 
-        self.output_layer = nn.Linear(config_dict["mlp_dims"][-1], self.output_dim)
+        self.output_layer = nn.Linear(self.output_dim, self.output_dim)
 
     def forward(self, input_params):
         """Passes an input tensor through the network"""
@@ -78,6 +82,11 @@ class stacked_mlp(nn.Module):
 
         self.num_cosmo_params = config_dict["num_cosmo_params"]
         self.num_nuisance_params = config_dict["num_nuisance_params"]
+
+        if config_dict["normalization_type"] == "normal":
+            self.output_dim = self.num_ells * self.num_kbins
+        elif config_dict["normalization_type"] == "pca":
+            self.output_dim = config_dict["num_pcs"]
 
         # Stores networks sequentially in a list
         self.networks = nn.ModuleList()
@@ -128,7 +137,7 @@ class stacked_mlp(nn.Module):
         
         # feed parameters through all sub-networks
         if net_idx == None:
-            X = torch.zeros((input_params.shape[0], self.num_spectra, self.num_zbins, self.num_ells*self.num_kbins), 
+            X = torch.zeros((input_params.shape[0], self.num_spectra, self.num_zbins, self.output_dim), 
                              device=input_params.device)
             
             for (z, ps) in itertools.product(range(self.num_zbins), range(self.num_spectra)):

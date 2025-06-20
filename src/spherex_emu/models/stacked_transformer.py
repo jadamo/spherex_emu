@@ -29,7 +29,12 @@ class single_transformer(nn.Module):
             self.input_dim = config_dict["num_cosmo_params"] + config_dict["num_nuisance_params"]
         else:
             self.input_dim = config_dict["num_cosmo_params"] + (2 * config_dict["num_nuisance_params"])
-        self.output_dim = self.num_ells * self.num_kbins
+        
+        
+        if config_dict["normalization_type"] == "normal":
+            self.output_dim = self.num_ells * self.num_kbins
+        elif config_dict["normalization_type"] == "pca":
+            self.output_dim = config_dict["num_pcs"]
 
         # mlp blocks
         self.input_layer = nn.Linear(self.input_dim, self.output_dim)
@@ -95,6 +100,11 @@ class stacked_transformer(nn.Module):
         self.num_cosmo_params    = config_dict["num_cosmo_params"]
         self.num_nuisance_params = config_dict["num_nuisance_params"]
 
+        if config_dict["normalization_type"] == "normal":
+            self.output_dim = self.num_ells * self.num_kbins
+        elif config_dict["normalization_type"] == "pca":
+            self.output_dim = config_dict["num_pcs"]
+
         # Stores networks sequentially in a list
         self.networks = nn.ModuleList()
         for z in range(self.num_zbins):
@@ -144,8 +154,7 @@ class stacked_transformer(nn.Module):
         
         # feed parameters through all sub-networks
         if net_idx == None:
-            X = torch.zeros((input_params.shape[0], self.num_spectra, self.num_zbins, self.num_ells*self.num_kbins), 
-                             device=input_params.device)
+            X = torch.zeros((input_params.shape[0], self.num_spectra, self.num_zbins, self.output_dim))
             
             for (z, ps) in itertools.product(range(self.num_zbins), range(self.num_spectra)):
                 idx = (z * self.num_spectra) + ps

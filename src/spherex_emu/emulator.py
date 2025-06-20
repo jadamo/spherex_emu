@@ -10,10 +10,10 @@ from spherex_emu.models.stacked_mlp import stacked_mlp
 from spherex_emu.models.stacked_transformer import stacked_transformer
 from spherex_emu.models.single_transformer import single_transformer
 from spherex_emu.dataset import pk_galaxy_dataset
-from spherex_emu.utils import load_config_file, calc_avg_loss, get_parameter_ranges,\
+from spherex_emu.utils import load_config_file, get_parameter_ranges,\
                               normalize_cosmo_params, un_normalize_power_spectrum, \
                               delta_chi_squared, mse_loss, hyperbolic_loss, hyperbolic_chi2_loss, \
-                              get_invcov_blocks, get_full_invcov
+                              get_invcov_blocks, get_full_invcov, pca_inverse_transform
 
 class pk_emulator():
     """Class defining the neural network emulator."""
@@ -35,9 +35,13 @@ class pk_emulator():
         if net_dir.endswith(".yaml"): self.config_dict = load_config_file(net_dir)
         else:                         self.config_dict = load_config_file(net_dir+"config.yaml")
 
+        # HACK: force normalization_type variable to be defined for older models
+        self.normalization_type = "normal"
+
         # load dictionary entries into their own class variables
         for key in self.config_dict:
             setattr(self, key, self.config_dict[key])
+        self.config_dict["normalization_type"] = self.normalization_type
 
         self._init_device(device)
         self._init_model()
@@ -79,17 +83,23 @@ class pk_emulator():
         self.input_normalizations = torch.load(path+"input_normalizations.pt", map_location=self.device, weights_only=True)
 
         output_norm_data = torch.load(path+"output_normalizations.pt", map_location=self.device, weights_only=True)
-        self.ps_fid        = output_norm_data[0]
-        self.ps_nw_fid     = output_norm_data[1]
-        self.invcov_full   = output_norm_data[2]
-        self.invcov_blocks = output_norm_data[3]
-        self.sqrt_eigvals  = output_norm_data[4]
-        self.Q             = output_norm_data[5]
-        self.Q_inv = torch.zeros_like(self.Q, device="cpu")
-        for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
-            self.Q_inv[ps, z] = torch.linalg.inv(self.Q[ps, z].to("cpu").to(torch.float64)).to(torch.float32)
-        self.Q_inv = self.Q_inv.to(self.device)
+        if self.normalization_type == "normal":
+            self.ps_fid        = output_norm_data[0]
+            self.ps_nw_fid     = output_norm_data[1]
+            self.invcov_full   = output_norm_data[2]
+            self.invcov_blocks = output_norm_data[3]
+            self.sqrt_eigvals  = output_norm_data[4]
+            self.Q             = output_norm_data[5]
+            self.Q_inv = torch.zeros_like(self.Q, device="cpu")
+            for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
+                self.Q_inv[ps, z] = torch.linalg.inv(self.Q[ps, z].to("cpu").to(torch.float64)).to(torch.float32)
+            self.Q_inv = self.Q_inv.to(self.device)
 
+        elif self.normalization_type == "pca":
+            self.principle_components = output_norm_data[0]
+            self.training_set_variance = output_norm_data[1]
+            self.invcov_full   = output_norm_data[2]
+            self.invcov_blocks = output_norm_data[3]
 
     def load_data(self, key: str, data_frac = 1.0, return_dataloader=True, data_dir=""):
         """loads and returns the training / validation / test dataset into memory
@@ -104,6 +114,10 @@ class pk_emulator():
 
         Returns:
             data: The desired data-set in either a pk_galaxy_dataset or DataLoader object.
+
+        Raises:
+            KeyError: If key is an incorrect value.
+            ValueError: If some property of the loaded dataset does not match with the emulator.
         """
 
         if data_dir != "": dir = data_dir
@@ -112,11 +126,20 @@ class pk_emulator():
         if key in ["training", "validation", "testing"]:
             data = pk_galaxy_dataset(dir, key, data_frac)
             data.to(self.device)
-            data.normalize_data(self.ps_fid, self.ps_nw_fid, self.sqrt_eigvals, self.Q)
+            if self.normalization_type == "normal":
+                data.normalize_data(self.ps_fid, self.ps_nw_fid, self.sqrt_eigvals, self.Q)
+            elif self.normalization_type == 'pca' and key == "training":
+                self._init_pca(data)
+
             data_loader = torch.utils.data.DataLoader(data, batch_size=self.config_dict["batch_size"], shuffle=True)
-        
+            
+            self._check_training_set(data)
+
             if return_dataloader: return data_loader
             else: return data
+        else:
+            raise KeyError("Invalid value for key! must be one of ['training', 'validation', 'testing']")
+
 
     def get_power_spectra(self, params, raw_output:bool = False):
         """Gets the power spectra corresponding to the given input params by passing them though the emulator
@@ -135,15 +158,19 @@ class pk_emulator():
             
             if raw_output:
                 return galaxy_ps
-            else:
-                galaxy_ps = un_normalize_power_spectrum(torch.flatten(galaxy_ps, start_dim=3), self.ps_fid, self.sqrt_eigvals, self.Q, self.Q_inv)
-                if params.shape[0] == 1:
-                    galaxy_ps = galaxy_ps.view(self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
-                else:
-                    galaxy_ps = galaxy_ps.view(-1, self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
-                galaxy_ps = galaxy_ps.to("cpu").detach().numpy()
 
-                return galaxy_ps        
+            if self.normalization_type == "normal":
+                galaxy_ps = un_normalize_power_spectrum(torch.flatten(galaxy_ps, start_dim=3), self.ps_fid, self.sqrt_eigvals, self.Q, self.Q_inv)
+            elif self.normalization_type == "pca":
+                galaxy_ps = pca_inverse_transform(galaxy_ps, self.principle_components, self.training_set_variance)
+
+            if params.shape[0] == 1:
+                galaxy_ps = galaxy_ps.view(self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
+            else:
+                galaxy_ps = galaxy_ps.view(-1, self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
+
+            return galaxy_ps.to("cpu").detach().numpy()
+
 
     def get_required_parameters(self):
         """Returns a dictionary of input parameters needed by the emulator. Used within Cosmo_Inference"""
@@ -203,6 +230,18 @@ class pk_emulator():
         self.input_normalizations = torch.vstack([lower_bounds, upper_bounds])
 
 
+    def _init_pca(self, data:pk_galaxy_dataset):
+        
+        X = data.galaxy_ps.flatten(start_dim=1).to(torch.float64)
+        std = torch.std(X, axis=0)
+
+        cov = torch.cov(X.T) / torch.outer(std, std)
+        eig, V = torch.linalg.eig(cov)
+        assert torch.all(eig.real > 0)
+
+        self.principle_components = V.T[:self.num_pcs].real.to(torch.float32)
+        self.training_set_variance = std.to(torch.float32)
+
     def _init_fiducial_power_spectrum(self):
         """Loads the fiducial galaxy and non-wiggle power spectrum for use in normalization"""
 
@@ -219,7 +258,7 @@ class pk_emulator():
         else:
             self.ps_fid = torch.zeros((self.num_spectra, self.num_zbins, self.num_kbins * self.num_ells)).to(self.device)
 
-        ps_file = self.input_dir+self.training_dir+"ps_nw_fid.npy"
+        ps_file = self.input_dir+self.training_dir+"nw_ps_fid.npy"
         if os.path.exists(ps_file):
             self.ps_nw_fid = torch.from_numpy(np.load(ps_file)).to(torch.float32).to(self.device)[0]
         else:
@@ -281,8 +320,7 @@ class pk_emulator():
         elif self.loss_type == "hyperbolic_chi2":
             self.loss_function = hyperbolic_chi2_loss
         else:
-            print("ERROR: Invalid loss function type")
-            raise KeyError
+            raise KeyError("ERROR: Invalid loss function type! Must be one of ['chi2', 'mse', 'hyperbolic', 'hyperbolic_chi2']")
 
 
     def _init_weights(self, m):
@@ -315,6 +353,7 @@ class pk_emulator():
         self.nw_valid_loss = []
 
         self.train_time = 0.
+
 
     def _init_optimizer(self):
         """Sets optimization objects, one for each sub-network"""
@@ -381,7 +420,10 @@ class pk_emulator():
             yaml.dump(self.get_required_parameters(), outfile, sort_keys=False, default_flow_style=False)
 
         # data related for output normalization
-        output_files = [self.ps_fid, self.ps_nw_fid, self.invcov_full, self.invcov_blocks, self.sqrt_eigvals, self.Q]
+        if self.normalization_type == "normal":
+            output_files = [self.ps_fid, self.ps_nw_fid, self.invcov_full, self.invcov_blocks, self.sqrt_eigvals, self.Q]
+        elif self.normalization_type == "pca":
+            output_files = [self.principle_components, self.training_set_variance, self.invcov_full, self.invcov_blocks]
         torch.save(output_files, self.input_dir+self.save_dir+"output_normalizations.pt")
 
         # Finally, the actual model parameters
@@ -404,6 +446,28 @@ class pk_emulator():
         
         norm_params = normalize_cosmo_params(params, self.input_normalizations)
         return norm_params
+
+
+    def _check_training_set(self, data):
+        """checks that loaded-in data for training / validation / testing is compatable with the given network config
+        
+        Raises:
+            ValueError: If a given property of the training set does not match with the emulator.
+        """
+
+        if len(data.cosmo_params) != self.num_cosmo_params:
+            raise ValueError("num_cosmo_params mismatch with training dataset! {:d} vs {:d}".format(len(data.cosmo_params), self.num_cosmo_params))
+        if len(data.bias_params) != self.num_nuisance_params:
+            raise ValueError("num_cosmo_params mismatch with training dataset! {:d} vs {:d}".format(len(data.bias_params), self.num_nuisance_params))
+        if data.num_spectra != self.num_spectra:
+            raise(ValueError("num_spectra (derived from num_tracers) mismatch with training dataset! {:d} vs {:d}".format(data.num_spectra, self.num_spectra)))
+        if data.num_zbins != self.num_zbins:
+            raise(ValueError("num_ells mismatch with training dataset! {:d} vs {:d}".format(data.num_zbins, self.num_zbins)))
+        if data.num_ells != self.num_ells:
+            raise(ValueError("num_ells mismatch with training dataset! {:d} vs {:d}".format(data.num_ells, self.num_ells)))
+        if data.num_kbins != self.num_kbins:
+            raise(ValueError("num_ells mismatch with training dataset! {:d} vs {:d}".format(data.num_kbins, self.num_kbins)))
+        
 
 # --------------------------------------------------------------------------
 # extra helper function (TODO: Find a better place for this)

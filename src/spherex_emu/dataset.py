@@ -25,7 +25,11 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         data = np.load(file)
         self.params = torch.from_numpy(data["params"]).to(torch.float32)
         self.galaxy_ps = torch.from_numpy(data["galaxy_ps"]).to(torch.float32)
-        self.nw_ps = torch.from_numpy(data["nw_ps"]).to(torch.float32)
+        # HACK: for inconsistent naming on my part
+        try:
+            self.nw_ps = torch.from_numpy(data["ps_nw"]).to(torch.float32)
+        except:
+            self.nw_ps = torch.from_numpy(data["nw_ps"]).to(torch.float32)
         del data
 
         header_info = load_config_file(data_dir+"info.yaml")
@@ -64,6 +68,7 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
 
         #self.nw_ps = torch.log(self.nw_ps) - torch.log(ps_nw_fid)
         self.nw_ps = (self.nw_ps / ps_nw_fid) - 1.
+
 
     def get_normalized_galaxy_power_spectra(self, idx):
         

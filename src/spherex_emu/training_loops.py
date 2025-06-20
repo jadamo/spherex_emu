@@ -3,7 +3,7 @@ import time
 import itertools
 
 from spherex_emu.emulator import pk_emulator, compile_multiple_device_training_results
-from spherex_emu.utils import calc_avg_loss, mse_loss, normalize_cosmo_params
+from spherex_emu.utils import calc_avg_loss, mse_loss, normalize_cosmo_params, pca_inverse_transform
 
 
 def train_galaxy_ps_one_epoch(emulator:pk_emulator, train_loader, bin_idx):
@@ -22,10 +22,15 @@ def train_galaxy_ps_one_epoch(emulator:pk_emulator, train_loader, bin_idx):
         
         target = torch.flatten(batch[1][:,ps_idx,z_idx], start_dim=1)
         prediction = emulator.galaxy_ps_model.forward(params, net_idx)
-
+        
         # calculate loss and update network parameters
         # TODO: Find better way to deal with passing invcov to the loss function
-        loss = emulator.loss_function(prediction, target, emulator.invcov_full, True)
+        if emulator.normalization_type == "pca":
+            prediction = pca_inverse_transform(prediction, emulator.principle_components, emulator.training_set_variance)
+            loss = emulator.loss_function(prediction, target, emulator.invcov_blocks[ps_idx, z_idx], False)
+        else:
+            loss = emulator.loss_function(prediction, target, emulator.invcov_full, True)
+
         assert torch.isnan(loss) == False
         assert torch.isinf(loss) == False
         emulator.optimizer[ps_idx][z_idx].zero_grad(set_to_none=True)
@@ -36,7 +41,7 @@ def train_galaxy_ps_one_epoch(emulator:pk_emulator, train_loader, bin_idx):
         total_time += (time.time() - t1)
 
     if emulator.print_progress: print("time for epoch: {:0.1f}s, time per batch: {:0.1f}ms".format(total_time, 1000*total_time / len(train_loader)), flush=True)
-    return (total_loss / len(train_loader))
+    return (total_loss / len(train_loader.dataset))
 
 
 def train_nw_ps_one_epoch(emulator:pk_emulator, train_loader):
@@ -68,7 +73,7 @@ def train_nw_ps_one_epoch(emulator:pk_emulator, train_loader):
         total_time += (time.time() - t1)
 
     if emulator.print_progress: print("time for epoch: {:0.1f}s, time per batch: {:0.1f}ms".format(total_time, 1000*total_time / len(train_loader)), flush=True)
-    return (total_loss / len(train_loader))
+    return (total_loss / len(train_loader.dataset))
 
 
 def train_on_single_device(emulator:pk_emulator):
@@ -98,12 +103,10 @@ def train_on_single_device(emulator:pk_emulator):
 
             training_loss = train_galaxy_ps_one_epoch(emulator, train_loader, [ps, z])
             if emulator.recalculate_train_loss:
-                emulator.train_loss[ps][z].append(calc_avg_loss(emulator.galaxy_ps_model, train_loader, emulator.input_normalizations, 
-                                                                emulator.invcov_full, emulator.loss_function, [ps, z], "galaxy_ps"))
+                emulator.train_loss[ps][z].append(calc_avg_loss(emulator, train_loader, emulator.loss_function, [ps, z], "galaxy_ps"))
             else:
                 emulator.train_loss[ps][z].append(training_loss)
-            emulator.valid_loss[ps][z].append(calc_avg_loss(emulator.galaxy_ps_model, valid_loader, emulator.input_normalizations, 
-                                                            emulator.invcov_full, emulator.loss_function, [ps, z], "galaxy_ps"))
+            emulator.valid_loss[ps][z].append(calc_avg_loss(emulator, valid_loader, emulator.loss_function, [ps, z], "galaxy_ps"))
             
             emulator.scheduler[ps][z].step(emulator.valid_loss[ps][z][-1])
             emulator.train_time = time.time() - start_time
@@ -120,28 +123,28 @@ def train_on_single_device(emulator:pk_emulator):
             if epochs_since_update[net_idx] > emulator.early_stopping_epochs:
                 print("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[ps][z]), flush=True)
 
-        # train non-wiggle power spectrum network
-        if epochs_since_update[-1] > emulator.early_stopping_epochs:
-            continue
+        # # train non-wiggle power spectrum network
+        # if epochs_since_update[-1] > emulator.early_stopping_epochs:
+        #     continue
 
-        emulator.nw_train_loss.append(train_nw_ps_one_epoch(emulator, train_loader))
-        emulator.nw_valid_loss.append(calc_avg_loss(emulator.nw_ps_model, valid_loader, emulator.input_normalizations, 
-                                                    emulator.invcov_full, mse_loss, [ps, z], "nw_ps"))
+        # emulator.nw_train_loss.append(train_nw_ps_one_epoch(emulator, train_loader))
+        # emulator.nw_valid_loss.append(calc_avg_loss(emulator.nw_ps_model, valid_loader, emulator.input_normalizations, 
+        #                                             emulator.invcov_full, mse_loss, [ps, z], "nw_ps"))
         
-        emulator.nw_scheduler.step(emulator.nw_valid_loss[-1])
-        emulator.train_time = time.time() - start_time
+        # emulator.nw_scheduler.step(emulator.nw_valid_loss[-1])
+        # emulator.train_time = time.time() - start_time
 
-        if emulator.nw_valid_loss[-1] < best_loss[-1]:
-            best_loss[-1] = emulator.nw_valid_loss[-1]
-            epochs_since_update[-1] = 0
-            emulator._update_checkpoint(mode="nw_ps")
-        else:
-            epochs_since_update[-1] += 1
+        # if emulator.nw_valid_loss[-1] < best_loss[-1]:
+        #     best_loss[-1] = emulator.nw_valid_loss[-1]
+        #     epochs_since_update[-1] = 0
+        #     emulator._update_checkpoint(mode="nw_ps")
+        # else:
+        #     epochs_since_update[-1] += 1
 
-        if emulator.print_progress: print("Non-wiggle net, Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(
-            epoch, emulator.nw_train_loss[-1], emulator.nw_valid_loss[-1], epochs_since_update[-1]), flush=True)
-        if epochs_since_update[-1] > emulator.early_stopping_epochs:
-            print("Non-wiggle net has not impvored for {:0.0f} epochs. Initiating early stopping...".format(epochs_since_update[-1]), flush=True)
+        # if emulator.print_progress: print("Non-wiggle net, Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(
+        #     epoch, emulator.nw_train_loss[-1], emulator.nw_valid_loss[-1], epochs_since_update[-1]), flush=True)
+        # if epochs_since_update[-1] > emulator.early_stopping_epochs:
+        #     print("Non-wiggle net has not impvored for {:0.0f} epochs. Initiating early stopping...".format(epochs_since_update[-1]), flush=True)
 
 
 def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
@@ -170,7 +173,7 @@ def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
     for epoch in range(emulator.num_epochs):
         # loop thru individual networks
         for (ps, z) in net_indeces[gpu_id]:
-            net_idx = (z * emulator.num_spectra) + ps
+            net_idx = int((z * emulator.num_spectra) + ps)
             if epochs_since_update[net_idx] > emulator.early_stopping_epochs:
                 continue
 
@@ -219,7 +222,7 @@ def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
             if epochs_since_update[-1] > emulator.early_stopping_epochs:
                 print("Non-wiggle net has not impvored for {:0.0f} epochs. Initiating early stopping...".format(epochs_since_update[-1]), flush=True)
 
-        if gpu_id == 0 and epoch % 25 == 0 and epoch > 0:
+        if gpu_id == 0 and epoch % 5 == 0 and epoch > 0:
             print("Checkpointing progress from all devices...", flush=True)
             full_emulator = compile_multiple_device_training_results(emulator.input_dir + base_save_dir, config_dir, emulator.num_gpus)
             full_emulator._save_model()

@@ -96,6 +96,20 @@ def make_latin_hypercube(priors, N):
     
     return params
 
+def make_hypersphere(priors, dim, N):
+    """Generates a hypersphere of N samples using the method from https://arxiv.org/abs/2405.01396v1"""
+
+    # generate points in a uniform hypersphere with radius 1
+    sphere_points = np.random.multivariate_normal(np.zeros(dim), np.eye(dim), size=N)
+    radius = np.sqrt(np.sum(sphere_points**2, axis=1))[:, np.newaxis]
+    uniform_points = np.random.uniform(0, 1, size=(N, 1))
+    new_radius = uniform_points**(1./dim)
+    sphere_points = (sphere_points / radius) * new_radius
+
+    # expand each dimension to match the prior boundaries
+    for d in range(dim):
+        sphere_points[:,d] = ((sphere_points[:,d] + 1) * (priors[d, 1] - priors[d, 0]) / 2.) + priors[d,0]
+    return sphere_points
 
 def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, test_frac:float, 
                           param_dim, num_zbins, num_spectra, num_ells, k_dim, remove_old_files=True):
@@ -214,19 +228,24 @@ def delta_chi_squared(predict, target, invcov, normalized=False):
 
     # inputs are size [b, 1, nl*nk]
     # OR [nps, nz, nk, nl] (same as cosmo_inference)
-    assert predict.shape == target.shape, \
-        "ERROR! preidciton and target shape mismatch: "+ str(predict.shape) +", "+ str(target.shape)
+    if predict.shape != target.shape:
+        raise ValueError("ERROR! preidciton and target shape mismatch: "+ str(predict.shape) +", "+ str(target.shape))
+
     delta = predict - target
 
     chi2 = 0
     # calculate the delta chi2 for the entire emulator output, assuming normalization has been undone
     if normalized == False:
-        assert len(delta.shape) == 4
-        (nps, nz, nk, nl) = delta.shape
-        for z in range(nz):
-            chi2 += torch.matmul(delta[:,z].flatten(), 
-                    torch.matmul(invcov[z], 
-                    delta[:,z].flatten()))
+        if delta.dim() == 2:
+            chi2 += torch.matmul(delta, torch.matmul(invcov, delta.unsqueeze(2)))
+        elif delta.dim() == 4:
+            (nps, nz, nk, nl) = delta.shape
+            for z in range(nz):
+                chi2 += torch.matmul(delta[:,z].flatten(), 
+                        torch.matmul(invcov[z], 
+                        delta[:,z].flatten()))
+        else:
+            raise ValueError("Expected input data with 2 or 5 dimensions, but got " + str(delta.dim()))
     else:
         assert len(delta.shape) == 2
         chi2 = torch.bmm(delta.unsqueeze(1), delta.unsqueeze(2)).squeeze()
@@ -235,36 +254,49 @@ def delta_chi_squared(predict, target, invcov, normalized=False):
     return chi2
 
 
-def calc_avg_loss(net, data_loader, input_normalizations, 
-                  invcov, loss_function, bin_idx=None, mode="galaxy_ps"):
+def calc_avg_loss(emulator, data_loader, loss_function, bin_idx=None, mode="galaxy_ps"):
     """run thru the given data set and returns the average loss value"""
 
     # if net_idx not specified, recursively call the function with all possible values
     if bin_idx == None and mode == "galaxy_ps":
-        total_loss = torch.zeros(net.num_spectra, net.num_zbins, requires_grad=False)
-        for (ps, z) in itertools.product(range(net.num_spectra), range(net.num_zbins)):
-            total_loss[ps, z] = calc_avg_loss(net, data_loader, input_normalizations, 
-                                              invcov, loss_function, [ps, z], mode)
+        total_loss = torch.zeros(emulator.num_spectra, emulator.num_zbins, requires_grad=False)
+        for (ps, z) in itertools.product(range(emulator.num_spectra), range(emulator.num_zbins)):
+            total_loss[ps, z] = calc_avg_loss(emulator, data_loader, loss_function, [ps, z], mode)
         return total_loss
     
-    net.eval()
+    emulator.galaxy_ps_model.eval()
     avg_loss = 0.
     with torch.no_grad():
         for (i, batch) in enumerate(data_loader):
             if mode == "galaxy_ps":
-                params = net.organize_parameters(batch[0])
-                params = normalize_cosmo_params(params, input_normalizations)
-                prediction = net(params, (bin_idx[1] * net.num_spectra) + bin_idx[0])
+                params = emulator.galaxy_ps_model.organize_parameters(batch[0])
+                params = normalize_cosmo_params(params, emulator.input_normalizations)
+                prediction = emulator.galaxy_ps_model.forward(params, (bin_idx[1] * emulator.num_spectra) + bin_idx[0])
                 target = torch.flatten(batch[1][:,bin_idx[0],bin_idx[1]], start_dim=1)
             elif mode == "nw_ps":
-                params = batch[0][:,:net.input_dim]
-                params = normalize_cosmo_params(params, input_normalizations[:,0,:net.input_dim])
-                prediction = net(params)
+                params = batch[0][:,:emulator.nw_ps_model.input_dim]
+                params = normalize_cosmo_params(params, emulator.input_normalizations[:,0,:emulator.input_dim])
+                prediction = emulator.nw_ps_model.forward(params)
                 target = batch[2]
 
-            avg_loss += loss_function(prediction, target, invcov, True).item()
+            if emulator.normalization_type == "pca":
+                prediction = pca_inverse_transform(prediction, emulator.principle_components, emulator.training_set_variance)
+                avg_loss += loss_function(prediction, target, emulator.invcov_blocks[bin_idx], False).item()
+            else:
+                avg_loss += loss_function(prediction, target, emulator.invcov_blocks, True).item()
 
-    return avg_loss / len(data_loader)
+    return avg_loss / (len(data_loader.dataset))
+
+
+def pca_transform(data, components, std):
+    return (data / std) @ components.T
+
+
+def pca_inverse_transform(reduced_data:torch.Tensor, components, std):
+    if reduced_data.dim() == 2:
+        reduced_data = reduced_data.unsqueeze(1)
+
+    return (torch.matmul(reduced_data, components) * std).squeeze()
 
 
 def normalize_cosmo_params(params, normalizations):
@@ -279,6 +311,12 @@ def normalize_power_spectrum(ps_raw, ps_fid, sqrt_eigvals, Q):
     for (ps, z) in itertools.product(range(ps_new.shape[1]), range(ps_new.shape[2])):
         ps_new[:,ps, z] = ((ps_raw[:, ps, z] @ Q[ps, z]) - (ps_fid[ps, z].flatten() @ Q[ps, z])) * sqrt_eigvals[ps, z]
     return ps_new
+
+
+def generate_PCs(ps_raw):
+
+    print(ps_raw.shape)
+    cov = torch.cov(ps_raw)
 
 
 def un_normalize_power_spectrum(ps_raw, ps_fid, sqrt_eigvals, Q, Q_inv):
