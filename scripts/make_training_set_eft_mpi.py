@@ -8,7 +8,7 @@ from mpi4py import MPI
 from scipy.integrate import romb
 from scipy.special import lpmv
 
-import ps_theory_calculator
+import ps_theory_calculator_camb as ps_theory_calculator
 from spherex_emu.utils import *
 
 #-------------------------------------------------------------------
@@ -68,7 +68,7 @@ def get_power_spectrum(samples, k, param_names, cosmo_dict, ps_config, theory):
             if not np.any(np.isnan(ps)) and \
                not np.any(np.isinf(ps)) and \
                not np.any(np.isnan(pk_nw)) and \
-               not np.any(np.isinf(pk_nw)) : 
+               not np.any(np.isinf(pk_nw)): 
                 galaxy_ps[idx] = ps
                 nw_ps[idx] = pk_nw
             else: 
@@ -88,8 +88,8 @@ def main():
     size = MPI.COMM_WORLD.Get_size()
     rank = MPI.COMM_WORLD.Get_rank()
 
-    if len(sys.argv) < 6:
-        if rank == 0: print("USAGE: python make_training_set_eft.py <cosmo_config_file> <survey_config_file> <save_dir> <k array file> <N>")
+    if len(sys.argv) < 7:
+        if rank == 0: print("USAGE: python make_training_set_eft.py <cosmo_config_file> <survey_config_file> <save_dir> <k array file> <N> <mode>")
         return -1
 
     cosmo_config_file  = sys.argv[1]
@@ -97,6 +97,7 @@ def main():
     save_dir           = sys.argv[3]
     k_array_file       = sys.argv[4]
     N                  = int(sys.argv[5])
+    mode               = sys.argv[6]
 
     if not os.path.exists(save_dir):
         print("Attempting to create save directory...")
@@ -124,7 +125,9 @@ def main():
     num_params = len(param_names)
 
     # Split up samples to multiple MPI ranks
-    if rank == 0: all_samples = make_latin_hypercube(param_ranges, N)
+    if rank == 0: 
+        if   mode == "hypercube":   all_samples = make_latin_hypercube(param_ranges, N)
+        elif mode == "hypersphere": all_samples = make_hypersphere(param_names, num_params, N)
     else:         all_samples = np.zeros((N, num_params))
     comm.Barrier()
     comm.Bcast(all_samples, root=0)
@@ -141,6 +144,7 @@ def main():
         print("Number of samples:", ps_config['number_density_table'].shape[0])
         print("Number of redshift bins:", len(ps_config["redshift_list"]))
         print("Number of varied parameters:", len(param_names),':', param_names)
+        print("samping mode:", mode)
         print("Saving to", save_dir)
 
         # first, generate the power spectrum at the fiducial cosmology

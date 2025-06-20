@@ -4,42 +4,43 @@ import ultranest
 import ultranest.stepsampler
 import time
 
-import ps_theory_calculator
+import ps_theory_calculator_camb as ps_theory_calculator
 from spherex_emu.emulator import pk_emulator
-import spherex_emu.filepaths as filepaths
 from spherex_emu.utils import load_config_file, get_parameter_ranges, prepare_ps_inputs, make_latin_hypercube
 
 # Defining "global" things here
 # TODO: find better way to do this
 
 # load in the fiducial data vector, emulator, and (inverse) covariance matrix
-emulator_dir = filepaths.base_dir+"/emulators/transformer_3_sample_1_redshift/"
-training_dir = filepaths.base_dir+"../../Data/SPHEREx-Data/Training-Set-EFT-3s-1z/"
-save_dir = filepaths.base_dir+"chains/eft_3_tracer/"
-invcov_dir = "/home/joeadamo/Research/SPHEREx/covapt_mt/data/output_data/invcov.dat"
+base_dir = "/home/joeadamo/Research/SPHEREx/spherex_emu/"
+emulator_dir = base_dir+"emulators/stacked_transformer_1t_1z/"
+training_dir = base_dir+"../../Data/SPHEREx-Data/training_set_eft_1t_1z/"
+save_dir = base_dir+"chains/eft_1t_1z/"
+cov_dir = training_dir+"cov.npy"
 use_emulator = False
 
 # get cosmology and survey parameters
-cosmo_dict = load_config_file(filepaths.cosmo_pars_dir+"eft_3_sample_1_redshift.yaml")
-survey_pars = load_config_file(filepaths.survey_pars_dir + 'survey_pars_3_sample_1_redshift.yaml')
+cosmo_dict = load_config_file(base_dir+"configs/cosmo_pars/cosmo_pars_1t_1z.yaml")
+survey_pars = load_config_file(base_dir + 'configs/survey_pars/survey_pars_1_tracer_1_redshift.yaml')
 
-invcov_data = torch.load(invcov_dir)
-invcov = invcov_data["zbin_0"].to("cpu").detach().numpy()
+cov = np.load(cov_dir)
+invcov = np.zeros_like(cov)
+for i in range(cov.shape[0]):
+    invcov[i] = np.linalg.inv(cov[i])
 
 config_dict = load_config_file(emulator_dir+"config.yaml")
 config_dict["use_gpu"] = False
 
 k_data = np.load(training_dir+"kbins.npz")
-k = k_data["k_0"]
+k = k_data["k"]
 ells = [0,2]
 
-emulator = pk_emulator(emulator_dir+"config.yaml")
-emulator.load_trained_model()
+emulator = pk_emulator(emulator_dir, "eval")
 
-data_vector_file = "/home/joeadamo/Research/SPHEREx/covapt_mt/data/input_data/ps_emu_test_3_tracer_no_noise.npy"
-data_vector = np.load(data_vector_file)
+data_vector_file = training_dir+"ps_fid.npy"
+data_vector = np.load(data_vector_file)[0]
 #data_vector = emulator.ps_fid.view(emulator.num_zbins, emulator.num_spectra, emulator.num_kbins, 2).to("cpu").detach().numpy()
-#data_vector = data_vector.transpose(0, 1, 3, 2)
+data_vector = data_vector.transpose(0, 1, 3, 2)
 print(data_vector.shape)
 
 # ps_1loop setup
@@ -82,7 +83,7 @@ def get_eft_model_vector(theta):
         params_dict[pname] = theta[idx]
         idx+=1
 
-    params = prepare_ps_inputs(params_dict, cosmo_dict, 3, 1)
+    params = prepare_ps_inputs(params_dict, cosmo_dict, 1, 1)
     # If varying h, make sure to divide by the varied h value!
     model_vector = theory(k, ells, params) / cosmo_dict["cosmo_params"]["h"]["value"]**3
     #model_vector = theory(k, ells, params) / params_dict["h"]**3
@@ -124,10 +125,10 @@ def main():
     )
     t1 = time.time()
     results = sampler.run(update_interval_volume_fraction=0.7,
-                          max_ncalls=1e6)
+                          max_ncalls=5e6)
     t2 = time.time()
     sampler.print_results()
-    print("Done in {:0.0f}m {:0.1f}s".format(int((t2-t1) / 60), (t2-t1) % 60))
+    print("Done in {:0.0f}h {:0.0f}m {:0.1f}s".format((t2-t1)//3600, ((t2-t1) % 3600) // 60, (t2-t1) % 60))
 
 if __name__ == "__main__":
     main()
