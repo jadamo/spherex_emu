@@ -86,8 +86,10 @@ class pk_emulator():
         self.nw_ps_model.load_state_dict(torch.load(os.path.join(path,'network_nw.params'), 
                                                     weights_only=True, map_location=self.device))
 
-        self.input_normalizations = torch.load(os.path.join(path,"input_normalizations.pt"), 
-                                               map_location=self.device, weights_only=True)
+        input_norm_data = torch.load(os.path.join(path,"input_normalizations.pt"), 
+                                     map_location=self.device, weights_only=True)
+        self.input_normalizations = input_norm_data[0]
+        self.required_emu_params  = input_norm_data[1]
         self.k_emu = np.load(os.path.join(path, "kbins.npz"))["k"]
 
         output_norm_data = torch.load(os.path.join(path,"output_normalizations.pt"), 
@@ -441,12 +443,13 @@ class pk_emulator():
             yaml.dump(dict(self.config_dict), outfile, sort_keys=False, default_flow_style=False)
         np.savez(os.path.join(save_dir, "kbins.npz"), k=self.k_emu)
 
-        # data related for input normalization
-        torch.save(self.input_normalizations, os.path.join(save_dir, "input_normalizations.pt"))
+        # data related to input normalization
+        input_files = [self.input_normalizations, self.required_emu_params]
+        torch.save(input_files, os.path.join(save_dir, "input_normalizations.pt"))
         with open(os.path.join(save_dir, "param_names.txt"), "w") as outfile:
             yaml.dump(self.get_required_parameters(), outfile, sort_keys=False, default_flow_style=False)
 
-        # data related for output normalization
+        # data related to output normalization
         if self.normalization_type == "normal":
             output_files = [self.ps_fid, self.ps_nw_fid, self.invcov_full, self.invcov_blocks, self.sqrt_eigvals, self.Q]
         elif self.normalization_type == "pca":
@@ -475,7 +478,7 @@ class pk_emulator():
         return norm_params
 
 
-    def _check_training_set(self, data):
+    def _check_training_set(self, data:pk_galaxy_dataset):
         """checks that loaded-in data for training / validation / testing is compatable with the given network config
         
         Raises:

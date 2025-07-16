@@ -5,7 +5,6 @@ from scipy.interpolate import InterpolatedUnivariateSpline, RectBivariateSpline
 import itertools, math
 import symbolic_pofk.linear as linear
 from spherex_emu.cosmo_utils import LCDMCosmology, IRResum, get_log_extrap
-import time
 
 class analytic_eft_model():
     """Class contatining calculations for the non-emulated terms of the EFT galaxy power spectrum"""
@@ -209,6 +208,7 @@ class analytic_eft_model():
         
         self.calculate_pk_lin(self.k_lin, params)
         self.set_ir_resum_params(params["h"], 1.)
+        mu_grid = np.linspace(0., 1., 51)
 
         pk_ell = np.zeros((len(self.redshift_list), self.num_spectra, len(self.ells), len(self.k)))
         for z in range(len(self.redshift_list)):
@@ -220,7 +220,6 @@ class analytic_eft_model():
 
             # spline interpolation
             k_grid = np.geomspace(np.max([np.min(k_eval), 1e-5]), np.min([np.max(k_eval), 1e3]), 256)
-            mu_grid = np.linspace(0., 1., 51)
 
             ps_idx = 0
             for tr_1, tr_2 in itertools.product(range(self.num_tracers), repeat=2):

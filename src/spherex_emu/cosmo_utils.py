@@ -4,6 +4,7 @@ from scipy.integrate import quad
 from scipy.special import spherical_jn
 from scipy.fft import dst, idst
 
+
 # NOTE: code as-is takes ~0.1 ms to calculate fgrowth in this method
 class LCDMCosmology():
 
