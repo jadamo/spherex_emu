@@ -66,13 +66,13 @@ def get_power_spectrum(samples, k, param_names, cosmo_dict, ps_config, theory):
             ps = np.transpose(ps, (1, 0, 3, 2))
             pk_nw = theory._model.irres.get_pk_nw(k_lin)
             if not np.any(np.isnan(ps)) and \
-               not np.any(np.isinf(ps)) and \
-               not np.any(np.isnan(pk_nw)) and \
-               not np.any(np.isinf(pk_nw)): 
+                not np.any(np.isinf(ps)) and \
+                not np.any(np.isnan(pk_nw)) and \
+                not np.any(np.isinf(pk_nw)): 
                 galaxy_ps[idx] = ps
                 nw_ps[idx] = pk_nw
             else: 
-                print("Power spectrum calculation failed!")
+                print("NaN or inf fouund in power spectrum!")
                 result[idx] = -1
         except:
             print("Power spectrum calculation failed!")
@@ -127,7 +127,7 @@ def main():
     # Split up samples to multiple MPI ranks
     if rank == 0: 
         if   mode == "hypercube":   all_samples = make_latin_hypercube(param_ranges, N)
-        elif mode == "hypersphere": all_samples = make_hypersphere(param_names, num_params, N)
+        elif mode == "hypersphere": all_samples = make_hypersphere(param_ranges, num_params, N)
     else:         all_samples = np.zeros((N, num_params))
     comm.Barrier()
     comm.Bcast(all_samples, root=0)

@@ -1,5 +1,5 @@
 from spherex_emu.emulator import pk_emulator, compile_multiple_device_training_results
-import math, time, sys
+import time, sys
 import torch
 import torch.multiprocessing as mp
 import itertools
@@ -26,6 +26,7 @@ def main():
         net_idx = torch.Tensor(list(itertools.product(range(emulator.num_spectra), range(emulator.num_zbins)))).to(int)
         split_indices = net_idx.chunk(emulator.num_gpus)
 
+        # spawn() usually behaves better than fork() on HPC
         mp.spawn(
             training_loops.train_on_multiple_devices,
             args=(split_indices, sys.argv[1]),

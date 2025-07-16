@@ -394,29 +394,35 @@ class pk_emulator():
     def _save_model(self):
         """saves the current model state and normalization information to file"""
 
-        if not os.path.exists(self.input_dir+self.save_dir):
-            os.mkdir(self.input_dir+self.save_dir)
+        save_dir = os.path.join(self.input_dir, self.save_dir)
+        training_data_dir = os.path.join(save_dir, "training_statistics")
+        # HACK for training on multiple GPUS - need to create parent directory first
+        if not os.path.exists(os.path.dirname(os.path.dirname(save_dir))):
+            os.mkdir(os.path.dirname(os.path.dirname(save_dir)))
+
+        if not os.path.exists(save_dir):
+            os.mkdir(save_dir)
 
         # training statistics
-        if not os.path.exists(self.input_dir+self.save_dir+"training_statistics"):
-            os.mkdir(self.input_dir+self.save_dir+"training_statistics")
+        if not os.path.exists(training_data_dir):
+            os.mkdir(training_data_dir)
 
         nw_training_data = torch.vstack([torch.Tensor(self.nw_train_loss), torch.Tensor(self.nw_valid_loss)])
-        torch.save(nw_training_data, self.input_dir+self.save_dir+"training_statistics/train_data_nw.dat")
+        torch.save(nw_training_data, os.path.join(training_data_dir, "train_data_nw.dat"))
         for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
             training_data = torch.vstack([torch.Tensor(self.train_loss[ps][z]), 
                                           torch.Tensor(self.valid_loss[ps][z]),
                                           torch.Tensor([self.train_time]*len(self.valid_loss[ps][z]))])
-            torch.save(training_data, self.input_dir+self.save_dir+"training_statistics/train_data_"+str(ps)+"_"+str(z)+".dat")
+            torch.save(training_data, os.path.join(training_data_dir, "train_data_"+str(ps)+"_"+str(z)+".dat"))
         
         # configuration data
         # TODO Upgrade this to save more details (ex: what kbins was this trained with?)
-        with open(self.input_dir+self.save_dir+'config.yaml', 'w') as outfile:
+        with open(os.path.join(save_dir, 'config.yaml'), 'w') as outfile:
             yaml.dump(dict(self.config_dict), outfile, sort_keys=False, default_flow_style=False)
 
         # data related for input normalization
-        torch.save(self.input_normalizations, self.input_dir+self.save_dir+"input_normalizations.pt")
-        with open(self.input_dir+self.save_dir+"param_names.txt", "w") as outfile:
+        torch.save(self.input_normalizations, os.path.join(save_dir, "input_normalizations.pt"))
+        with open(os.path.join(save_dir, "param_names.txt"), "w") as outfile:
             yaml.dump(self.get_required_parameters(), outfile, sort_keys=False, default_flow_style=False)
 
         # data related for output normalization
@@ -424,11 +430,11 @@ class pk_emulator():
             output_files = [self.ps_fid, self.ps_nw_fid, self.invcov_full, self.invcov_blocks, self.sqrt_eigvals, self.Q]
         elif self.normalization_type == "pca":
             output_files = [self.principle_components, self.training_set_variance, self.invcov_full, self.invcov_blocks]
-        torch.save(output_files, self.input_dir+self.save_dir+"output_normalizations.pt")
+        torch.save(output_files, os.path.join(save_dir, "output_normalizations.pt"))
 
         # Finally, the actual model parameters
-        torch.save(self.galaxy_ps_checkpoint, self.input_dir+self.save_dir+'network_galaxy.params')
-        torch.save(self.nw_ps_checkpoint, self.input_dir+self.save_dir+'network_nw.params')
+        torch.save(self.galaxy_ps_checkpoint, os.path.join(save_dir, 'network_galaxy.params'))
+        torch.save(self.nw_ps_checkpoint, os.path.join(save_dir, 'network_nw.params'))
 
 
     def _check_params(self, params):
@@ -457,8 +463,8 @@ class pk_emulator():
 
         if len(data.cosmo_params) != self.num_cosmo_params:
             raise ValueError("num_cosmo_params mismatch with training dataset! {:d} vs {:d}".format(len(data.cosmo_params), self.num_cosmo_params))
-        if len(data.bias_params) != self.num_nuisance_params:
-            raise ValueError("num_cosmo_params mismatch with training dataset! {:d} vs {:d}".format(len(data.bias_params), self.num_nuisance_params))
+        if len(data.bias_params) != self.num_nuisance_params*self.num_tracers*self.num_zbins:
+            raise ValueError("num_nuisance_params mismatch with training dataset! {:d} vs {:d}".format(len(data.bias_params), self.num_nuisance_params*self.num_tracers*self.num_zbins))
         if data.num_spectra != self.num_spectra:
             raise(ValueError("num_spectra (derived from num_tracers) mismatch with training dataset! {:d} vs {:d}".format(data.num_spectra, self.num_spectra)))
         if data.num_zbins != self.num_zbins:
