@@ -15,24 +15,24 @@ import spherex_emu.filepaths as filepaths
 # GLOBAL VARIABLES
 #-------------------------------------------------------------------
 
-k = np.linspace(0.07, 0.2, 50)
 
-N = 100000
+k = np.array([0.00694, 0.01482, 0.0227, 0.03058, 0.03846, 0.04634, 0.05422, 0.0621, 0.06998,
+              0.07786, 0.08574, 0.09362, 0.1015,  0.10938, 0.11726, 0.12514, 0.13302, 0.1409,
+              0.14878, 0.15666, 0.16454, 0.17242, 0.1803,  0.18818, 0.19606])
 
 # fraction of dataset to be partitioned to the training | validation | test sets
 train_frac = 0.8
 valid_frac = 0.1
 test_frac  = 0.1
 
-net_config_file = filepaths.network_pars_dir+"network_pars_single_sample_single_redshift.yaml"
-cosmo_config_file = filepaths.cosmo_pars_dir+"eft_single_sample_single_redshift.yaml"
-survey_config_file = filepaths.survey_pars_dir+'survey_pars_single_sample_single_redshift.yaml'
-
+net_config_file = filepaths.network_pars_dir+"network_pars_3_sample_1_redshift.yaml"
+cosmo_config_file = filepaths.cosmo_pars_dir+"eft_3_sample_1_redshift.yaml"
+survey_config_file = filepaths.survey_pars_dir+'survey_pars_3_sample_1_redshift.yaml'
 #Joes directory: save_dir = "/home/joeadamo/Research/Data/SPHEREx-Data/Training-Set-EFT-2s-2z/"
 
 #Same filepath to save as tns training set
 #save_dir = filepaths.data_dir
-save_dir = '/home/u12/jadamo/Data/Training-Set-EFT-1s-1z/'
+save_dir = '/xdisk/timeifler/jadamo/Training-Set-EFT-3s-1z/'
 
 #-------------------------------------------------------------------
 # MAIN
@@ -60,7 +60,7 @@ def main():
     param_names, param_ranges = get_parameter_ranges(cosmo_dict)
 
     organize_training_set(save_dir, train_frac, valid_frac, test_frac,
-                          3, len(z_eff), num_spectra, num_ells, len(k), False)
+                          len(param_names), len(z_eff), num_spectra, num_ells, len(k), False)
 
 if __name__ == "__main__":
     main()

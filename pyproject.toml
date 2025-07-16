@@ -19,7 +19,8 @@ dependencies = [
     "scipy",
     "torch",
     "pytest",
-    "pyyaml"
+    "pyyaml",
+    "symbolic_pofk@git+https://github.com/DeaglanBartlett/symbolic_pofk.git"
 ]
 
 [tool.setuptools.packages.find]
