@@ -441,7 +441,10 @@ class pk_emulator():
         # configuration data
         with open(os.path.join(save_dir, 'config.yaml'), 'w') as outfile:
             yaml.dump(dict(self.config_dict), outfile, sort_keys=False, default_flow_style=False)
-        np.savez(os.path.join(save_dir, "kbins.npz"), k=self.k_emu)
+        if hasattr(self, "k_emu"):
+            np.savez(os.path.join(save_dir, "kbins.npz"), k=self.k_emu)
+        else:
+            self.logger.warn("kbins not initialized!")
 
         # data related to input normalization
         input_files = [self.input_normalizations, self.required_emu_params]

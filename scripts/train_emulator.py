@@ -27,9 +27,11 @@ def main():
     # split the sub-networks to train on multiple gpus
     else:
         logger.info("Splitting up training on {:d} GPUs...".format(emulator.num_gpus))
+        # spawn() usually behaves better than fork() on HPC
+        mp.set_start_method("spawn", force=True)
         net_idx = torch.Tensor(list(itertools.product(range(emulator.num_spectra), range(emulator.num_zbins)))).to(int)
         split_indices = net_idx.chunk(emulator.num_gpus)
-
+        
         # spawn() usually behaves better than fork() on HPC
         mp.spawn(
             training_loops.train_on_multiple_devices,

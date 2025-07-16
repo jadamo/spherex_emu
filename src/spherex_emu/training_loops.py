@@ -1,6 +1,7 @@
 import torch
 import time
 import itertools
+import logging
 
 from spherex_emu.emulator import pk_emulator, compile_multiple_device_training_results
 from spherex_emu.utils import calc_avg_loss, mse_loss, normalize_cosmo_params, pca_inverse_transform
@@ -40,7 +41,7 @@ def train_galaxy_ps_one_epoch(emulator:pk_emulator, train_loader, bin_idx):
         total_loss += loss.detach()
         total_time += (time.time() - t1)
 
-    emulator.logger.debug("time for epoch: {:0.1f}s, time per batch: {:0.1f}ms".format(total_time, 1000*total_time / len(train_loader)), flush=True)
+    emulator.logger.debug("time for epoch: {:0.1f}s, time per batch: {:0.1f}ms".format(total_time, 1000*total_time / len(train_loader)))
     return (total_loss / len(train_loader.dataset))
 
 
@@ -72,7 +73,7 @@ def train_nw_ps_one_epoch(emulator:pk_emulator, train_loader):
         total_loss += loss.detach()
         total_time += (time.time() - t1)
 
-    emulator.logger.debug("time for epoch: {:0.1f}s, time per batch: {:0.1f}ms".format(total_time, 1000*total_time / len(train_loader)), flush=True)
+    emulator.logger.debug("time for epoch: {:0.1f}s, time per batch: {:0.1f}ms".format(total_time, 1000*total_time / len(train_loader)))
     return (total_loss / len(train_loader.dataset))
 
 
@@ -119,9 +120,9 @@ def train_on_single_device(emulator:pk_emulator):
                 epochs_since_update[net_idx] += 1
 
             emulator.logger.info("Net idx : [{:d}, {:d}], Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(
-                ps, z, epoch, emulator.train_loss[ps][z][-1], emulator.valid_loss[ps][z][-1], epochs_since_update[net_idx]), flush=True)
+                ps, z, epoch, emulator.train_loss[ps][z][-1], emulator.valid_loss[ps][z][-1], epochs_since_update[net_idx]))
             if epochs_since_update[net_idx] > emulator.early_stopping_epochs:
-                emulator.logger.info("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[ps][z]), flush=True)
+                emulator.logger.info("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[ps][z]))
 
         # # train non-wiggle power spectrum network
         # if epochs_since_update[-1] > emulator.early_stopping_epochs:
@@ -146,16 +147,17 @@ def train_on_single_device(emulator:pk_emulator):
         # if epochs_since_update[-1] > emulator.early_stopping_epochs:
         #     print("Non-wiggle net has not impvored for {:0.0f} epochs. Initiating early stopping...".format(epochs_since_update[-1]), flush=True)
 
-
 def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
     
-    device = torch.device(f"cuda:{gpu_id}")
     # Each sub-process gets its own indpendent emulator object, where it will train the corresponding
     # sub-networks based on net_indeces
+    device = torch.device(f"cuda:{gpu_id}")
+    logging.basicConfig(level=logging.DEBUG, format=f"[GPU {gpu_id}] %(message)s")
     emulator = pk_emulator(config_dir, "train", device)
+
     base_save_dir = emulator.save_dir
     emulator.save_dir += "rank_"+str(gpu_id)+"/"
-    emulator.logger.debug(device, net_indeces[gpu_id], flush=True)
+    emulator.logger.debug(f"training networks with ids: {net_indeces[gpu_id]}")
 
     train_loader = emulator.load_data("training", emulator.training_set_fraction)
     valid_loader = emulator.load_data("validation")
@@ -194,10 +196,10 @@ def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
             else:
                 epochs_since_update[net_idx] += 1
 
-            emulator.logger.info("GPU: {:d}, Net idx : [{:d}, {:d}], Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(
-                gpu_id, ps, z, epoch, emulator.train_loss[ps][z][-1], emulator.valid_loss[ps][z][-1], epochs_since_update[net_idx]), flush=True)
+            emulator.logger.info("Net idx : [{:d}, {:d}], Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(
+                gpu_id, ps, z, epoch, emulator.train_loss[ps][z][-1], emulator.valid_loss[ps][z][-1], epochs_since_update[net_idx]))
             if epochs_since_update[net_idx] > emulator.early_stopping_epochs:
-                emulator.logger.info("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[net_idx]), flush=True)
+                emulator.logger.info("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[net_idx]))
 
         # train non-wiggle power spectrum network        
         # if gpu_id == 0 and epochs_since_update[-1] <= emulator.early_stopping_epochs:
@@ -220,6 +222,6 @@ def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
         #         print("Non-wiggle net has not impvored for {:0.0f} epochs. Initiating early stopping...".format(epochs_since_update[-1]), flush=True)
 
         if gpu_id == 0 and epoch % 5 == 0 and epoch > 0:
-            emulator.logger.info("Checkpointing progress from all devices...", flush=True)
+            emulator.logger.info("Checkpointing progress from all devices...")
             full_emulator = compile_multiple_device_training_results(emulator.input_dir + base_save_dir, config_dir, emulator.num_gpus)
             full_emulator._save_model()
