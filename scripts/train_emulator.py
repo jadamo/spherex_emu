@@ -3,6 +3,7 @@ import time, sys
 import torch
 import torch.multiprocessing as mp
 import itertools
+import logging
 
 import spherex_emu.training_loops as training_loops
 
@@ -12,17 +13,20 @@ def main():
         print("USAGE: python train_emulator.py <config_file>")
         return 0
 
+    logging.basicConfig(level = logging.INFO)
+    logger = logging.getLogger("train_emulator")
+
     t1 = time.time()
     emulator = pk_emulator(sys.argv[1], "train")
 
     # train on a single cpu / gpu
     if emulator.num_gpus < 2:
-        print("Training network on device:", emulator.device)
+        logger.info("Training network on device:", emulator.device)
         training_loops.train_on_single_device(emulator)
 
     # split the sub-networks to train on multiple gpus
     else:
-        print("Splitting up training on {:d} GPUs...".format(emulator.num_gpus))
+        logger.info("Splitting up training on {:d} GPUs...".format(emulator.num_gpus))
         net_idx = torch.Tensor(list(itertools.product(range(emulator.num_spectra), range(emulator.num_zbins)))).to(int)
         split_indices = net_idx.chunk(emulator.num_gpus)
 
@@ -37,7 +41,7 @@ def main():
         full_emulator._save_model()
 
     t2 = time.time()
-    print("Training Done in {:0.0f} hours {:0.0f} minutes {:0.2f} seconds\n".format(
+    logger.info("Training Done in {:0.0f} hours {:0.0f} minutes {:0.2f} seconds\n".format(
         (t2-t1)//3600, ((t2-t1) % 3600) // 60, (t2-t1)%60))
 
 if __name__ == "__main__":

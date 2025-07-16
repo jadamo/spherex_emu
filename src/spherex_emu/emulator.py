@@ -4,11 +4,13 @@ import torch.multiprocessing as mp
 import numpy as np
 import yaml, math, os, copy
 import itertools
+import logging
 
 from spherex_emu.models import blocks
 from spherex_emu.models.stacked_mlp import stacked_mlp
 from spherex_emu.models.stacked_transformer import stacked_transformer
 from spherex_emu.models.single_transformer import single_transformer
+from spherex_emu.models.analytic_terms import analytic_eft_model
 from spherex_emu.dataset import pk_galaxy_dataset
 from spherex_emu.utils import load_config_file, get_parameter_ranges,\
                               normalize_cosmo_params, un_normalize_power_spectrum, \
@@ -38,6 +40,8 @@ class pk_emulator():
         # HACK: force normalization_type variable to be defined for older models
         self.normalization_type = "normal"
 
+        self.logger = logging.getLogger('pk_emulator')
+
         # load dictionary entries into their own class variables
         for key in self.config_dict:
             setattr(self, key, self.config_dict[key])
@@ -60,10 +64,10 @@ class pk_emulator():
 
         elif mode == "eval":
             self.load_trained_model(net_dir)
+            self._init_analytic_model()
 
         else:
-            print("ERROR! Invalid mode specified! Must be one of ['train', 'eval']")
-            raise KeyError
+            raise KeyError(f"Invalid mode specified! Must be one of ['train', 'eval'] but was {mode}.")
 
 
     def load_trained_model(self, path):
@@ -74,15 +78,20 @@ class pk_emulator():
             path: The directory+filename of the trained network to load. 
         """
 
-        print("loading emulator from " + path)
+        self.logger.info(f"loading emulator from {path}")
         self.galaxy_ps_model.eval()
         self.nw_ps_model.eval()
-        self.galaxy_ps_model.load_state_dict(torch.load(path+'network_galaxy.params', weights_only=True, map_location=self.device))
-        self.nw_ps_model.load_state_dict(torch.load(path+'network_nw.params', weights_only=True, map_location=self.device))
+        self.galaxy_ps_model.load_state_dict(torch.load(os.path.join(path,'network_galaxy.params'), 
+                                                        weights_only=True, map_location=self.device))
+        self.nw_ps_model.load_state_dict(torch.load(os.path.join(path,'network_nw.params'), 
+                                                    weights_only=True, map_location=self.device))
 
-        self.input_normalizations = torch.load(path+"input_normalizations.pt", map_location=self.device, weights_only=True)
+        self.input_normalizations = torch.load(os.path.join(path,"input_normalizations.pt"), 
+                                               map_location=self.device, weights_only=True)
+        self.k_emu = np.load(os.path.join(path, "kbins.npz"))["k"]
 
-        output_norm_data = torch.load(path+"output_normalizations.pt", map_location=self.device, weights_only=True)
+        output_norm_data = torch.load(os.path.join(path,"output_normalizations.pt"), 
+                                      map_location=self.device, weights_only=True)
         if self.normalization_type == "normal":
             self.ps_fid        = output_norm_data[0]
             self.ps_nw_fid     = output_norm_data[1]
@@ -100,6 +109,7 @@ class pk_emulator():
             self.training_set_variance = output_norm_data[1]
             self.invcov_full   = output_norm_data[2]
             self.invcov_blocks = output_norm_data[3]
+
 
     def load_data(self, key: str, data_frac = 1.0, return_dataloader=True, data_dir=""):
         """loads and returns the training / validation / test dataset into memory
@@ -122,6 +132,9 @@ class pk_emulator():
 
         if data_dir != "": dir = data_dir
         else :             dir = self.input_dir+self.training_dir
+
+        if not hasattr(self, "k_emu"):
+            self.k_emu = np.load(os.path.join(dir, "kbins.npz"))["k"]
 
         if key in ["training", "validation", "testing"]:
             data = pk_galaxy_dataset(dir, key, data_frac)
@@ -176,12 +189,15 @@ class pk_emulator():
         """Returns a dictionary of input parameters needed by the emulator. Used within Cosmo_Inference"""
 
         # TODO: read in these requirnments from a file
-        cosmo_params = ["As", "ns", "fnl"]
-        bias_params = ["galaxy_bias_10", "galaxy_bias_20", "galaxy_bias_G2"]
-        counterterm_params = ["counterterm_0", "counterterm_2", "counterterm_fog"]
-        required_params = {"cosmo_params":cosmo_params, "galaxy_bias_params":bias_params, "counterterm_params": counterterm_params}
-        return required_params
+        # cosmo_params = ["As", "ns", "fnl"]
+        # bias_params = ["galaxy_bias_10", "galaxy_bias_20", "galaxy_bias_G2"]
+        # counterterm_params = ["counterterm_0", "counterterm_2", "counterterm_fog"]
+        # required_params = {"cosmo_params":cosmo_params, "galaxy_bias_params":bias_params, "counterterm_params": counterterm_params}
+        # return required_params
+        return self.required_emu_params
 
+    def check_kbins(self, test_kbins):
+        raise NotImplementedError
 
     # -----------------------------------------------------------
     # Helper methods: Not meant to be called by the user directly
@@ -196,7 +212,6 @@ class pk_emulator():
         elif torch.backends.mps.is_available(): self.device = torch.device("mps")
         else:                                   self.device = torch.device('cpu')
 
-
     def _init_model(self):
         """Initializes the networks"""
         self.num_spectra = self.num_tracers + math.comb(self.num_tracers, 2)
@@ -205,21 +220,27 @@ class pk_emulator():
         elif self.model_type == "stacked_transformer":
             self.galaxy_ps_model = stacked_transformer(self.config_dict).to(self.device)
         else:
-            print("ERROR: Invalid value for model_type", self.model_type)
-            raise KeyError
+            raise KeyError(f"Invalid value for model_type: {self.model_type}")
         
         self.nw_ps_model = single_transformer(self.config_dict).to(self.device)
 
 
+    def _init_analytic_model(self):
+        """Initializes object for calculating analytic eft terms"""
+
+        # TODO: pass in redshift list and ell_list
+        self.analytic_model = analytic_eft_model(self.num_tracers, [0.3, 0.5], [0,2], self.k_emu)
+
+
     def _init_input_normalizations(self):
-        """Initializes input parameter normalization factors
+        """Initializes input parameter names and normalization factors
         
         Normalizations are in the shape (low / high bound, net_idx, parameter)
         """
 
         try:
             cosmo_dict = load_config_file(self.input_dir+self.cosmo_dir)
-            __, param_bounds = get_parameter_ranges(cosmo_dict)
+            param_names, param_bounds = get_parameter_ranges(cosmo_dict)
             input_normalizations = torch.Tensor(param_bounds.T).to(self.device)
         except IOError:
             input_normalizations = torch.vstack((torch.zeros((self.num_cosmo_params + (self.num_tracers*self.num_zbins*self.num_nuisance_params))),
@@ -228,7 +249,7 @@ class pk_emulator():
         lower_bounds = self.galaxy_ps_model.organize_parameters(input_normalizations[0].unsqueeze(0))
         upper_bounds = self.galaxy_ps_model.organize_parameters(input_normalizations[1].unsqueeze(0))
         self.input_normalizations = torch.vstack([lower_bounds, upper_bounds])
-
+        self.required_emu_params = param_names
 
     def _init_pca(self, data:pk_galaxy_dataset):
         
@@ -275,7 +296,7 @@ class pk_emulator():
         elif os.path.exists(cov_file+"cov.npy"):
             cov = torch.from_numpy(np.load(cov_file+"cov.npy"))
         else:
-            print("Could not find covariance matrix! Using identity matrix instead...")
+            self.logger.warning("Could not find covariance matrix! Using identity matrix instead...")
             cov = torch.eye(self.num_spectra*self.num_ells*self.num_kbins).unsqueeze(0)
             cov = cov.repeat(self.num_zbins, 1, 1)  
 
@@ -366,7 +387,7 @@ class pk_emulator():
                 self.optimizer[ps][z] = torch.optim.Adam(self.galaxy_ps_model.networks[net_idx].parameters(), 
                                                          lr=self.galaxy_ps_learning_rate)
             else:
-                print("Error! Invalid optimizer type specified!")
+                raise KeyError("Error! Invalid optimizer type specified!")
 
             # use an adaptive learning rate
             self.scheduler[ps][z] = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer[ps][z],
@@ -416,9 +437,9 @@ class pk_emulator():
             torch.save(training_data, os.path.join(training_data_dir, "train_data_"+str(ps)+"_"+str(z)+".dat"))
         
         # configuration data
-        # TODO Upgrade this to save more details (ex: what kbins was this trained with?)
         with open(os.path.join(save_dir, 'config.yaml'), 'w') as outfile:
             yaml.dump(dict(self.config_dict), outfile, sort_keys=False, default_flow_style=False)
+        np.savez(os.path.join(save_dir, "kbins.npz"), k=self.k_emu)
 
         # data related for input normalization
         torch.save(self.input_normalizations, os.path.join(save_dir, "input_normalizations.pt"))
@@ -448,7 +469,7 @@ class pk_emulator():
 
         if torch.any(params < self.input_normalizations[0]) or \
            torch.any(params > self.input_normalizations[1]):
-            print("WARNING: input parameters out of bounds! Emulator output will be untrustworthy:", params)
+            self.logger.warning("Input parameters out of bounds! Emulator output will be untrustworthy:", params)
         
         norm_params = normalize_cosmo_params(params, self.input_normalizations)
         return norm_params

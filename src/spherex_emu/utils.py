@@ -111,6 +111,17 @@ def make_hypersphere(priors, dim, N):
         sphere_points[:,d] = ((sphere_points[:,d] + 1) * (priors[d, 1] - priors[d, 0]) / 2.) + priors[d,0]
     return sphere_points
 
+def is_in_hypersphere(priors, params):
+    """Returns whether or not the given params are within a hypersphere with edges defined by bounds"""
+
+    # convert params to lay within the unit sphere
+    unit_params = np.zeros_like(params)
+    for d in range(priors.shape[0]):
+        unit_params[d] = 2*(params[d] - priors[d,0]) / (priors[d,1] - priors[d,0]) - 1
+    r = np.sqrt(np.sum(unit_params**2))
+    if r >= 1: return False, r
+    else:      return True, r
+
 def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, test_frac:float, 
                           param_dim, num_zbins, num_spectra, num_ells, k_dim, remove_old_files=True):
     """Takes a set of matrices and reorganizes them into training, validation, and tests sets
