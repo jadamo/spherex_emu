@@ -475,7 +475,7 @@ class pk_emulator():
 
         if torch.any(params < self.input_normalizations[0]) or \
            torch.any(params > self.input_normalizations[1]):
-            self.logger.warning("Input parameters out of bounds! Emulator output will be untrustworthy:", params)
+            self.logger.warning("Input parameters out of bounds! Emulator output will be untrustworthy:")
         
         norm_params = normalize_cosmo_params(params, self.input_normalizations)
         return norm_params

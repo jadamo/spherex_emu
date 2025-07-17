@@ -28,6 +28,17 @@ test_frac  = 0.1
 # FUNCTIONS
 #-------------------------------------------------------------------
 
+def is_fiducial_cosmology_in_hyperspere(cosmo_dict, param_ranges):
+    cosmo_fid = []
+    for param in cosmo_dict["cosmo_params"].keys():
+        if "prior" in cosmo_dict["cosmo_params"][param]:
+            cosmo_fid.append(cosmo_dict["cosmo_params"][param]["value"])
+    for param in cosmo_dict["nuisance_params"].keys():
+        if "prior" in cosmo_dict["nuisance_params"][param]:
+            cosmo_fid.append(cosmo_dict["nuisance_params"][param]["value"])
+
+    return is_in_hypersphere(param_ranges, np.array(cosmo_fid))
+
 def prepare_header_info(param_names, fiducial_cosmology, n_samples):
 
     header_info = {}
@@ -126,9 +137,17 @@ def main():
 
     # Split up samples to multiple MPI ranks
     if rank == 0: 
-        if   mode == "hypercube":   all_samples = make_latin_hypercube(param_ranges, N)
-        elif mode == "hypersphere": all_samples = make_hypersphere(param_ranges, num_params, N)
-    else:         all_samples = np.zeros((N, num_params))
+        if   mode == "hypercube":   
+            all_samples = make_latin_hypercube(param_ranges, N)
+        elif mode == "hypersphere": 
+            all_samples = make_hypersphere(param_ranges, num_params, N)
+            is_valid_cosmo, r = is_fiducial_cosmology_in_hyperspere(cosmo_dict, param_ranges)
+            if not is_valid_cosmo:
+                raise ValueError(f"Fiducial cosmology is outside of hypersphere! r = {r}")
+            else:
+                print("Verified fiducial cosmology lies within hypersphere")
+    else:         
+        all_samples = np.zeros((N, num_params))
     comm.Barrier()
     comm.Bcast(all_samples, root=0)
 
