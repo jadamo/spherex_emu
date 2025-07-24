@@ -122,7 +122,7 @@ def train_on_single_device(emulator:pk_emulator):
             emulator.logger.info("Net idx : [{:d}, {:d}], Epoch : {:d}, avg train loss: {:0.4e}\t avg validation loss: {:0.4e}\t ({:0.0f})".format(
                 ps, z, epoch, emulator.train_loss[ps][z][-1], emulator.valid_loss[ps][z][-1], epochs_since_update[net_idx]))
             if epochs_since_update[net_idx] > emulator.early_stopping_epochs:
-                emulator.logger.info("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[ps][z]))
+                emulator.logger.info("Model [{:d}, {:d}] has not impvored for {:0.0f} epochs. Initiating early stopping...".format(ps, z, epochs_since_update[net_idx]))
 
         # # train non-wiggle power spectrum network
         # if epochs_since_update[-1] > emulator.early_stopping_epochs:

@@ -136,6 +136,7 @@ class pk_emulator():
         else :             dir = self.input_dir+self.training_dir
 
         if not hasattr(self, "k_emu"):
+            self.logger.info("loading kbins from training set")
             self.k_emu = np.load(os.path.join(dir, "kbins.npz"))["k"]
 
         if key in ["training", "validation", "testing"]:
@@ -479,7 +480,6 @@ class pk_emulator():
         
         norm_params = normalize_cosmo_params(params, self.input_normalizations)
         return norm_params
-
 
     def _check_training_set(self, data:pk_galaxy_dataset):
         """checks that loaded-in data for training / validation / testing is compatable with the given network config
