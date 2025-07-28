@@ -237,6 +237,9 @@ def delta_chi_squared(predict, target, invcov, normalized=False):
     if not isinstance(target, torch.Tensor):
         target = torch.from_numpy(target).to(torch.float32).to(invcov.device)
 
+    if target.device != invcov.device:  target = target.to(invcov.device)
+    if predict.device != invcov.device: predict = predict.to(invcov.device)
+
     # inputs are size [b, 1, nl*nk]
     # OR [nps, nz, nk, nl] (same as cosmo_inference)
     if predict.shape != target.shape:

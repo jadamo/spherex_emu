@@ -47,7 +47,7 @@ class pk_emulator():
             setattr(self, key, self.config_dict[key])
         self.config_dict["normalization_type"] = self.normalization_type
 
-        self._init_device(device)
+        self._init_device(device, mode)
         self._init_model()
         self._init_loss()
 
@@ -206,10 +206,11 @@ class pk_emulator():
     # Helper methods: Not meant to be called by the user directly
     # -----------------------------------------------------------
 
-    def _init_device(self, device):
+    def _init_device(self, device, mode):
         """Sets emulator device based on machine configuration"""
         self.num_gpus = torch.cuda.device_count()
-        if device != None:                      self.device = device
+        if mode == "eval":                      self.device = torch.device("cpu")
+        elif device != None:                    self.device = device
         elif self.use_gpu == False:             self.device = torch.device('cpu')
         elif torch.cuda.is_available():         self.device = torch.device('cuda:0')
         elif torch.backends.mps.is_available(): self.device = torch.device("mps")
