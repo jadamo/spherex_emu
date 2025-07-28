@@ -522,8 +522,9 @@ def compile_multiple_device_training_results(save_dir, config_dir, num_gpus):
         sub_dir = "rank_"+str(n) + "/"
         seperate_network = pk_emulator(save_dir+sub_dir, "eval")
 
-        # non-wiggle power spectrum network
+        # non-wiggle power spectrum network + kbins
         if n == 0:
+            full_emulator.k_emu = np.load(sub_dir+"kbins.npz")["k"]
             full_emulator.nw_ps_model = seperate_network.nw_ps_model
             train_data = torch.load(save_dir+sub_dir+"training_statistics/train_data_nw.dat", weights_only=True)
             full_emulator.nw_train_loss = train_data[0,:]
