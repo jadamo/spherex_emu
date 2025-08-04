@@ -465,7 +465,7 @@ class pk_emulator():
         input_files = [self.input_normalizations, self.required_emu_params]
         torch.save(input_files, os.path.join(save_dir, "input_normalizations.pt"))
         with open(os.path.join(save_dir, "param_names.txt"), "w") as outfile:
-            yaml.dump(self.get_required_parameters(), outfile, sort_keys=False, default_flow_style=False)
+            yaml.dump(self.get_required_emu_parameters(), outfile, sort_keys=False, default_flow_style=False)
 
         # data related to output normalization
         if self.normalization_type == "normal":

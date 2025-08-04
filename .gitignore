@@ -2,7 +2,7 @@
 *.pyc
 __pycache__/
 
-# Ignore build directories created by installing
+# Ignore build directories and files created by installing
 build/
 *.egg-info/
 .DS_Store
@@ -15,3 +15,4 @@ plots/
 # Ignore temporary files created by editors
 *~
 *.swp
+settings.json
