@@ -1,0 +1,17 @@
+# Ignore compiled Python files
+*.pyc
+__pycache__/
+
+# Ignore build directories created by installing
+build/
+*.egg-info/
+.DS_Store
+
+# Ignore other optional directories
+emulators/
+chains/
+plots/
+
+# Ignore temporary files created by editors
+*~
+*.swp

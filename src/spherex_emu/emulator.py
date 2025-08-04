@@ -158,19 +158,34 @@ class pk_emulator():
 
 
     def get_power_spectra(self, params, raw_output:bool = False):
-        """Gets the power spectra corresponding to the given input params by passing them though the emulator
+        """Gets the full galaxy power spectrum multipoles (emulated and analytically calculated)
         
         Args:
-            params: 1D or 2D numpy array or torch Tensor containing a list of cosmology + galaxy bias parameters. 
+            params: 1D or 2D numpy array, torch Tensor, or dictionary containing a list of cosmology + galaxy bias parameters. 
                 if params is a 2D array, this function generates a batch of power spectra simultaniously
             raw_output: bool specifying whether or not to return the raw network output without undoing normalization. Default False
         """
+        galaxy_ps_emu = self.get_emulated_power_spectrum(params, raw_output)
 
-        # TODO: Add k-bin check (it should match the covariance matrix)
+        if galaxy_ps_emu.shape[0] == 1: 
+            return galaxy_ps_emu[0] + self.analytic_model.get_analytic_terms(params, self.required_emu_params, self.get_required_analytic_parameters())
+        else:
+            return galaxy_ps_emu
+
+
+    def get_emulated_power_spectrum(self, params, raw_output:bool = False):
+        """Gets the power spectra corresponding to the given input params by passing them though the emulator
+        
+        Args:
+            params: 1D or 2D numpy array, torch Tensor, or dictionary containing a list of cosmology + galaxy bias parameters. 
+                if params is a 2D array, this function generates a batch of power spectra simultaniously
+            raw_output: bool specifying whether or not to return the raw network output without undoing normalization. Default False
+        """
+        
         self.galaxy_ps_model.eval()
         with torch.no_grad():
-            params = self._check_params(params)
-            galaxy_ps = self.galaxy_ps_model.forward(params) # <- shape [nb, nps, nz, nk*nl]
+            emu_params = self._check_params(params)
+            galaxy_ps = self.galaxy_ps_model.forward(emu_params) # <- shape [nb, nps, nz, nk*nl]
             
             if raw_output:
                 return galaxy_ps
@@ -188,16 +203,12 @@ class pk_emulator():
             return galaxy_ps.to("cpu").detach().numpy()
 
 
-    def get_required_parameters(self):
+    def get_required_emu_parameters(self):
         """Returns a dictionary of input parameters needed by the emulator. Used within Cosmo_Inference"""
-
-        # TODO: read in these requirnments from a file
-        # cosmo_params = ["As", "ns", "fnl"]
-        # bias_params = ["galaxy_bias_10", "galaxy_bias_20", "galaxy_bias_G2"]
-        # counterterm_params = ["counterterm_0", "counterterm_2", "counterterm_fog"]
-        # required_params = {"cosmo_params":cosmo_params, "galaxy_bias_params":bias_params, "counterterm_params": counterterm_params}
-        # return required_params
         return self.required_emu_params
+
+    def get_required_analytic_parameters(self):
+        return ["counterterm_0", "counterterm_2", "counterterm_fog", "P_shot"]
 
     def check_kbins(self, test_kbins):
         raise NotImplementedError
@@ -216,6 +227,7 @@ class pk_emulator():
         elif torch.backends.mps.is_available(): self.device = torch.device("mps")
         else:                                   self.device = torch.device('cpu')
 
+
     def _init_model(self):
         """Initializes the networks"""
         self.num_spectra = self.num_tracers + math.comb(self.num_tracers, 2)
@@ -233,7 +245,8 @@ class pk_emulator():
         """Initializes object for calculating analytic eft terms"""
 
         # TODO: pass in redshift list and ell_list
-        self.analytic_model = analytic_eft_model(self.num_tracers, [0.3, 0.5], [0,2], self.k_emu)
+        #self.analytic_model = analytic_eft_model(self.num_tracers, [0.3, 0.5], [0,2], self.k_emu)
+        self.analytic_model = analytic_eft_model(self.num_tracers, [0.5], [0,2], self.k_emu)
 
 
     def _init_input_normalizations(self):
@@ -465,14 +478,21 @@ class pk_emulator():
         torch.save(self.galaxy_ps_checkpoint, os.path.join(save_dir, 'network_galaxy.params'))
         torch.save(self.nw_ps_checkpoint, os.path.join(save_dir, 'network_nw.params'))
 
-
     def _check_params(self, params):
         """checks that input parameters are in the expected format and within the specified boundaries"""
 
-        if isinstance(params, torch.Tensor): params = params.to(self.device)
-        else: params = torch.from_numpy(params).to(torch.float32).to(self.device)
-
+        if isinstance(params, torch.Tensor): 
+            params = params.to(self.device)
+        elif isinstance(params, np.ndarray): 
+            params = torch.from_numpy(params).to(torch.float32).to(self.device)
+        else:
+            raise TypeError(f"invalid type for variable params ({type(params)})")
+        
         if params.dim() == 1: params = params.unsqueeze(0)
+
+        if params.shape[1] > len(self.required_emu_params):
+            params = params[:, :len(self.required_emu_params)]
+
         params = self.galaxy_ps_model.organize_parameters(params)
 
         if torch.any(params < self.input_normalizations[0]) or \
@@ -520,14 +540,14 @@ def compile_multiple_device_training_results(save_dir, config_dir, num_gpus):
     full_emulator.valid_loss = torch.zeros((full_emulator.num_spectra, full_emulator.num_zbins, full_emulator.num_epochs))
     full_emulator.train_time = 0.
     for n in range(num_gpus):
-        sub_dir = "rank_"+str(n) + "/"
-        seperate_network = pk_emulator(save_dir+sub_dir, "eval")
+        sub_dir = "rank_"+str(n)
+        seperate_network = pk_emulator(os.path.join(save_dir,sub_dir), "eval")
 
         # non-wiggle power spectrum network + kbins
         if n == 0:
-            full_emulator.k_emu = np.load(sub_dir+"kbins.npz")["k"]
+            full_emulator.k_emu = np.load(os.path.join(save_dir,sub_dir,"kbins.npz"))["k"]
             full_emulator.nw_ps_model = seperate_network.nw_ps_model
-            train_data = torch.load(save_dir+sub_dir+"training_statistics/train_data_nw.dat", weights_only=True)
+            train_data = torch.load(os.path.join(save_dir,sub_dir,"training_statistics/train_data_nw.dat"), weights_only=True)
             full_emulator.nw_train_loss = train_data[0,:]
             full_emulator.nw_valid_loss = train_data[1,:]
 
@@ -536,7 +556,7 @@ def compile_multiple_device_training_results(save_dir, config_dir, num_gpus):
             net_idx = (z * full_emulator.num_spectra) + ps
             full_emulator.galaxy_ps_model.networks[net_idx] = seperate_network.galaxy_ps_model.networks[net_idx]
 
-            train_data = torch.load(save_dir+sub_dir+"training_statistics/train_data_"+str(int(ps))+"_"+str(int(z))+".dat", weights_only=True)
+            train_data = torch.load(os.path.join(save_dir,sub_dir,"training_statistics/train_data_"+str(int(ps))+"_"+str(int(z))+".dat"), weights_only=True)
             epochs = train_data.shape[1]
 
             full_emulator.train_loss[ps, z, :epochs] = train_data[0,:]

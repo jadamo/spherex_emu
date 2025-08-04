@@ -1,5 +1,5 @@
 import yaml, os
-from scipy.stats import qmc
+from scipy.stats import qmc, norm
 from scipy.special import hyp2f1
 from torch.nn import functional as F
 import numpy as np
@@ -24,26 +24,47 @@ def load_config_file(config_file:str):
 
 
 def get_parameter_ranges(cosmo_dict):
-    """Returns cosmology and bias parameter priors based on the input cosmo_dict
-    TODO: Upgrade to handle normal priors as well as uniform priors"""
+    """Returns cosmology and bias parameter priors based on the input cosmo_dict"""
 
     cosmo_params = {}
     for param in cosmo_dict["cosmo_params"]:
         if "prior" in cosmo_dict["cosmo_params"][param]:
-            cosmo_params[param] = [cosmo_dict["cosmo_params"][param]["prior"]["min"],
-                                   cosmo_dict["cosmo_params"][param]["prior"]["max"]]
+            if "min" in cosmo_dict["cosmo_params"][param]["prior"]:
+                cosmo_params[param] = [cosmo_dict["cosmo_params"][param]["prior"]["min"],
+                                       cosmo_dict["cosmo_params"][param]["prior"]["max"]]
+            else:
+                cosmo_params[param] = [cosmo_dict["cosmo_params"][param]["prior"]["mean"] - 5*cosmo_dict["cosmo_params"][param]["prior"]["variance"],
+                                       cosmo_dict["cosmo_params"][param]["prior"]["mean"] + 5*cosmo_dict["cosmo_params"][param]["prior"]["variance"]]
 
     nuisance_params = {}
     for param in cosmo_dict["nuisance_params"]:
         if "prior" in cosmo_dict["nuisance_params"][param]:
-            nuisance_params[param] = [cosmo_dict["nuisance_params"][param]["prior"]["min"],
-                                      cosmo_dict["nuisance_params"][param]["prior"]["max"]]
-
+            if "min" in cosmo_dict["nuisance_params"][param]["prior"]:
+                nuisance_params[param] = [cosmo_dict["nuisance_params"][param]["prior"]["min"],
+                                          cosmo_dict["nuisance_params"][param]["prior"]["max"]]
+            else:
+                nuisance_params[param] = [cosmo_dict["nuisance_params"][param]["prior"]["mean"] - 5*cosmo_dict["nuisance_params"][param]["prior"]["variance"],
+                                          cosmo_dict["nuisance_params"][param]["prior"]["mean"] + 5*cosmo_dict["nuisance_params"][param]["prior"]["variance"]]
     params_dict = {**cosmo_params, **nuisance_params}
     priors = np.array(list(params_dict.values()))
     params = list(params_dict.keys())
     return params, priors
 
+def get_gaussan_priors(cosmo_dict):
+    priors, prior_names = [], []
+    for param in cosmo_dict["cosmo_params"]:
+        if "prior" in cosmo_dict["cosmo_params"][param]:
+            if "mean" in cosmo_dict["cosmo_params"][param]["prior"]:
+                priors.append(norm(cosmo_dict["cosmo_params"][param]["prior"]["mean"], cosmo_dict["cosmo_params"][param]["prior"]["variance"]))
+                prior_names.append(param)
+
+    for param in cosmo_dict["nuisance_params"]:
+        if "prior" in cosmo_dict["nuisance_params"][param]:
+            if "mean" in cosmo_dict["nuisance_params"][param]["prior"]:
+                priors.append(norm(cosmo_dict["nuisance_params"][param]["prior"]["mean"], cosmo_dict["nuisance_params"][param]["prior"]["variance"]))
+                prior_names.append(param)
+
+    return priors, prior_names
 
 def prepare_ps_inputs(sample, cosmo_dict, num_tracers, num_zbins):
     """takes a set of parameters and oragnizes them to the format expected by ps_1loop"""

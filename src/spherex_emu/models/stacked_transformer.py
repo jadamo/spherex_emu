@@ -154,7 +154,7 @@ class stacked_transformer(nn.Module):
         
         # feed parameters through all sub-networks
         if net_idx == None:
-            X = torch.zeros((input_params.shape[0], self.num_spectra, self.num_zbins, self.output_dim))
+            X = torch.zeros((input_params.shape[0], self.num_spectra, self.num_zbins, self.output_dim), device=input_params.device)
             
             for (z, ps) in itertools.product(range(self.num_zbins), range(self.num_spectra)):
                 idx = (z * self.num_spectra) + ps
