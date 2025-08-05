@@ -35,7 +35,7 @@ class pk_emulator():
             IOError: if no input yaml file was found
         """
         if net_dir.endswith(".yaml"): self.config_dict = load_config_file(net_dir)
-        else:                         self.config_dict = load_config_file(net_dir+"config.yaml")
+        else:                         self.config_dict = load_config_file(os.path.join(net_dir,"config.yaml"))
 
         # HACK: force normalization_type variable to be defined for older models
         self.normalization_type = "normal"

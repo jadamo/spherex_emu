@@ -2,6 +2,7 @@ import torch
 import time
 import itertools
 import logging
+import os
 
 from spherex_emu.emulator import pk_emulator, compile_multiple_device_training_results
 from spherex_emu.utils import calc_avg_loss, mse_loss, normalize_cosmo_params, pca_inverse_transform
@@ -155,7 +156,7 @@ def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
     logging.basicConfig(level=logging.DEBUG, format=f"[GPU {gpu_id}] %(message)s")
     emulator = pk_emulator(config_dir, "train", device)
 
-    base_save_dir = emulator.save_dir
+    base_save_dir = os.path.join(emulator.input_dir, emulator.save_dir)
     emulator.save_dir += "rank_"+str(gpu_id)+"/"
     emulator.logger.debug(f"training networks with ids: {net_indeces[gpu_id]}")
 
@@ -223,5 +224,5 @@ def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
 
         if gpu_id == 0 and epoch % 5 == 0 and epoch > 0:
             emulator.logger.info("Checkpointing progress from all devices...")
-            full_emulator = compile_multiple_device_training_results(emulator.input_dir + base_save_dir, config_dir, emulator.num_gpus)
+            full_emulator = compile_multiple_device_training_results(base_save_dir, config_dir, emulator.num_gpus)
             full_emulator._save_model()
