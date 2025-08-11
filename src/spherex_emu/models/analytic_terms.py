@@ -17,7 +17,17 @@ class analytic_eft_model():
     params_stoch = {'P_shot':0, 'a0':0, 'a2':0}
     params_stoch_cross = {'P_shot_cross':0, 'a0_cross':0, 'a2_cross':0}
 
-    def __init__(self, num_tracers, redshift_list, ells, k):
+
+    def __init__(self, num_tracers:int, redshift_list:list, ells:list, k:np.array):
+        """Sets up the model for calculating the counterterms and shot-noise contribution
+        to the galaxy power spectrum.
+        
+        Args:
+            num_tracers (int): number of correlated tracers
+            redshift_list (list): list of effective redshifts in each bin
+            ells (list): list of ell modes to calculate
+            k (np.array): array of k-bins to calculate the multipoles with.
+        """
 
         self.reference_cosmology = LCDMCosmology(0.7, 0.3)
 
@@ -37,8 +47,10 @@ class analytic_eft_model():
         self.sigma_v = 0.
         self.set_default_params()
 
+
     def set_default_params(self):
         """sets default cosmology and nuiscance parameters to a dictionary"""
+
         self.params = {}
         for pname in self.params_cosmo.keys():
             self.params[pname] = self.params_cosmo[pname]
@@ -50,17 +62,30 @@ class analytic_eft_model():
             for pname in self.params_stoch.keys():
                 self.params['%s_%s_%s' % (pname, ps, z)] = self.params_stoch[pname]
 
-    def set_ir_resum_params(self, h, D):
-        # object for precalculated IR resummation stuff
+
+    def set_ir_resum_params(self, h:float, D:float):
+        """Initializes IR Resummation calculation object
+        
+        Args:
+            h (float): Hubble factor
+            D (float): Linear growth rate D(a)
+        """
+
         self.irres = IRResum(self.get_pk_lin, hubble=h, rbao=110., kwarg={"D" : D})
         # BAO damping factors
-        #t = time.time()
         self.Sigma2 = self.irres.get_Sigma2(ks=0.2)
         self.dSigma2 = self.irres.get_dSigma2(ks=0.2)
-        #print("Sigma2 takes {:0.1f}ms to calculate".format((time.time()-t)*1000))
 
-    def set_params(self, param_vector, emu_params_list, analytic_params_list):
 
+    def set_params(self, param_vector:np.array, emu_params_list:list, analytic_params_list:list):
+        """Sets cosmology, galaxy bias, counterterm, and shotnoise parameters
+
+        Args:
+            param_vector (np.array): 1D array of all parameters
+            emu_params_list (list): list of parameters used by the emulator
+            analytic_params_list (list): list of parameters used for the counterterms and shot-noise terms
+        """
+        
         # create a dictionary of parameters for a given (very long) parameter vector. 
         i = 0
         for pname in emu_params_list:
@@ -100,13 +125,31 @@ class analytic_eft_model():
         self.params['alpha_perp'] = DA_list / DA_ref_list
         self.params['alpha_para'] = Hz_ref_list / Hz_list
 
-    def calculate_pk_lin(self, k, params):
- 
+
+    def calculate_pk_lin(self, k:np.array, params:dict):
+        """Calculates the linear matter power spectrum.
+
+        This calculation is done by first calling symbolic_pofk, and then initializing a
+        univariate spline object in log-k space. 
+
+        Args:
+            k (np.array): array of k-bins to calculate the power spectrum at
+            params (dict): dictionary of parameters. Must include sigma8, Omega_m, Omega_b, h, and ns
+        """
         pk_lin = linear.plin_emulated(k, params['sigma8'], params['Omega_m'], params['Omega_b'], params['h'], params['ns'], emulator='fiducial', extrapolate=True)
         k_extrap, pk_extrap = get_log_extrap(k, pk_lin, xmin=1e-7, xmax=1e7)
         self.pk_lin_spl = InterpolatedUnivariateSpline(np.log(k_extrap), np.log(pk_extrap))
 
-    def get_k_nl(self, D, k0=0.5):
+
+    def get_k_nl(self, D:float, k0:float=0.5):
+        """Calculates the k-mode where sigma_P(k) = 1
+        
+        Args:
+            D (float): linear growth rate D(a)
+            k0 (float): Initial guess for k_nl. Default 0.5
+        Returns:
+            k_nl (float): k-mode specifying the start of the nonlinear regiime.
+        """
         def func(logk):
             k = np.exp(logk)
             Delta2_lin = k**3 * self.get_pk_lin(k, D) / (2 * np.pi**2)
@@ -121,13 +164,34 @@ class analytic_eft_model():
         k_nl = np.exp(root[0])
         return k_nl
 
-    def get_pk_lin(self, k, D, khigh=None): # in unit of [h^{-3} Mpc^3]
+
+    def get_pk_lin(self, k:np.array, D:float, khigh=None):
+        """Retrieves the linear matter power spectrum from a univariate spline object
+        
+        Args:
+            k (np.array): k-array to calculate the matter power spectrum from. In units of h/Mpc
+            D (float): Linear growth rate D(z). Used to transform to a specific redshift
+        Returns:
+            pk_lin (np.array): linear power spectrum in units of [h^{-3} Mpc^3] calculated at the given k array
+        """
+        
         pk_lin = np.exp(self.pk_lin_spl(np.log(k))) * D**2
         if khigh != None:
             pk_lin = pk_lin * np.exp(-(k / khigh))
         return pk_lin
 
-    def get_pk_lin_irres_rsd(self, k, mu, f, D):
+    def get_pk_lin_irres_rsd(self, k:np.array, mu:np.array, f:float, D:float):
+        """Calculates the linear power spectrum including IR resummation, RSD, and velocity damping
+
+        Args:
+            k (np.array): k-array to calculate the matter power spectrum from. In units of h/Mpc
+            mu (np.array): array of line-of-site cos(theta) values
+            f (flaot): Linear growth rate f(z)
+            D (float): Linear growth factor D(z)
+        Returns:
+            pk (np.array): Linear anisotropic power spectrum with shape (k, mu) 
+        """
+        
         # wiggly-non-wiggly decomposition
         plin = self.get_pk_lin(k, D)
         plin_nw = self.irres.get_pk_nw(k) * D**2
@@ -145,12 +209,27 @@ class analytic_eft_model():
         pk = plin_nw_tile + np.exp(-damp_fac) * plin_w_tile
         return pk
 
-    def get_damping_factor(self, k, mu, f):
+
+    def get_damping_factor(self, k:np.array, mu:np.array, f:float):
+        """Calculates the velocity damping factor
+        
+        Args:
+            k (np.array): k-array in units of h/Mpc
+            mu (np.array): line-of-site direction cos(theta).
+            f (float): linear growth rate f(z)
+        Returns:
+            damp_fac (np.array): damping factor with shape (k, mu)
+        """
         kmu = np.kron(k, mu).reshape(len(k), len(mu))
         return np.exp(-0.5*(f * self.sigma_v*kmu)**2)
 
-    def get_tree_term(self, k, mu, bias1, bias2, f, D):
 
+    def get_tree_term(self, k:np.array, mu:np.array, bias1, bias2, f, D):
+        """Calculates the tree-level anisotropic galaxy power spectrum
+        This term is also known as the Kaiser term.
+
+        NOTE: This function is not used by the current emulator version!
+        """
         plin = self.get_pk_lin(k, D)
         plin_nw = self.irres.get_pk_nw(k) * D**2
         plin_w = plin - plin_nw
@@ -169,7 +248,25 @@ class analytic_eft_model():
 
         return Z1_tile1 * Z1_tile2 * (plin_nw_tile + (1 + damp_fac) * np.exp(-damp_fac) * plin_w_tile)
     
-    def get_ctr_terms(self, k, mu, b1_1, b1_2, ctr1, ctr2, f, D):
+
+    def get_ctr_terms(self, k:np.array, mu:np.array, b1_1:float, b1_2:float, ctr1:dict, ctr2:dict, f:float, D:float):
+        """Calculates the LO and NLO counterterms for the galaxy power spectrum for a specific tracer and redshift bin combination.
+
+        Args:
+            k (np.array): k-array to calculate the matter power spectrum from. In units of h/Mpc
+            mu (np.array): array of line-of-site cos(theta) values
+            b1_1 (float): b1 for tracer 1
+            b1_2 (float): b1 for tracer 2. If one tracer, or an auto-spectrum, this is equal to b1_1
+            ctr1 (dict): dictionary of counterterm free parameters for tracer 1. 
+                Should contain (counterterm_0, counterterm_2, counterterm_4, and counterterm_fog)
+            ctr2 (dict): dictionary of counterterm free parameters for tracer 2. 
+                Should contain (counterterm_0, counterterm_2, counterterm_4, and 
+                counterterm_fog). If one tracer, or an auto-spectrum, this is equal to ctr1
+            f (flaot): Linear growth rate f(z)
+            D (float): Linear growth factor D(z)
+        Returns:
+            ctr_L0 + ctr_NL0 (np.array): counterterms with shape (k, mu)
+        """
 
         plin_tile = self.get_pk_lin_irres_rsd(k, mu, f, D)
         #plin_tile = np.tile(plin, (len(mu),1)).T
@@ -231,16 +328,29 @@ class analytic_eft_model():
 
     #     return pk_ell_ctr1
 
-    def get_stochastic_terms(self, k, mu, stoch1, k_nl, is_cross):
+
+    def get_stochastic_terms(self, k:np.array, mu:np.array, stoch1:dict, k_nl:float, is_cross:bool=False):
+        """Calculates the stochastic comtribution to the galaxy power spectrum for a specific tracer and redshift bin combination.
+
+        Args:
+            k (np.array): k-array to calculate the matter power spectrum from. In units of h/Mpc
+            mu (np.array): array of line-of-site cos(theta) values
+            stoch1 (dict): dictionary of counterterm free parameters. Should include (P_shot, a0, a2)
+            k_nl (float): non-linear k-mode.
+            is_cross (bool): Whether the specific bin is an auto or cross spectrum. Default False.
+            NOTE: Currently set to ignore stochastic term for cross spectra.
+        Returns:
+            pkmu (np.array): stochastic term in shape of (k, mu)
+        """
         k = np.atleast_1d(k)
         mu = np.atleast_1d(mu)
         
-        # auto power spectrum
         if is_cross == False:
             pkmu = stoch1['P_shot']
             pkmu = pkmu + stoch1['a0'] * np.kron((k / k_nl)**2, lpmv(0,0,mu)).reshape(len(k), len(mu))
             pkmu = pkmu + stoch1['a2'] * np.kron((k / k_nl)**2, lpmv(0,2,mu)).reshape(len(k), len(mu))
             pkmu = 1. / self.ndens * pkmu
+        # currently ignoring cross-power spectrum stochastic contribution
         else:
             pkmu = np.zeros((len(k), len(mu)))
 
@@ -248,8 +358,18 @@ class analytic_eft_model():
             pkmu = np.ravel(pkmu)
         return pkmu
 
-    def get_analytic_terms(self, param_vector, emu_params_list, analytic_params_list):
 
+    def get_analytic_terms(self, param_vector:np.array, emu_params_list:dict, analytic_params_list:dict):
+        """Calculates and returns the counterterm and stochastic contributions to the galaxy power spectrum.
+
+        Args:
+            param_vector (np.array): 1D array of all parameters
+            emu_params_list (list): list of parameters used by the emulator
+            analytic_params_list (list): list of parameters used for the counterterms and shot-noise terms
+
+        Returns:
+            pk_analtytic: P_ctr + P_stoch multipoles. Has shape (nps, nz, nl, nk).
+        """
         if len(param_vector) == len(emu_params_list):
             return 0
 
