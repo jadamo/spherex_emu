@@ -29,15 +29,13 @@ class analytic_eft_model():
             k (np.array): array of k-bins to calculate the multipoles with.
         """
 
-        self.reference_cosmology = LCDMCosmology(0.7, 0.3)
-
         self.redshift_list = redshift_list
         self.num_zbins = len(redshift_list)
         self.num_tracers = num_tracers
         self.num_spectra = self.num_tracers + math.comb(self.num_tracers, 2)
         self.ells = ells
         self.k = k
-        self.mu = np.linspace(0.,1.,2**5+1)
+        self.mu = np.linspace(0.,1.,2**8+1)
         self.dmu = self.mu[1] - self.mu[0]
 
         # HACK: hard-coding number density for now
@@ -45,10 +43,11 @@ class analytic_eft_model():
 
         self.k_lin = np.geomspace(1e-4, 10., 1000)
         self.sigma_v = 0.
-        self.set_default_params()
+        self._set_default_params()
+        self._set_reference_cosmology()
 
 
-    def set_default_params(self):
+    def _set_default_params(self):
         """sets default cosmology and nuiscance parameters to a dictionary"""
 
         self.params = {}
@@ -62,6 +61,15 @@ class analytic_eft_model():
             for pname in self.params_stoch.keys():
                 self.params['%s_%s_%s' % (pname, ps, z)] = self.params_stoch[pname]
 
+
+    def _set_reference_cosmology(self):
+
+        h = self.params["h"]
+        #Omb = self.params['ombh2'] / self.params['h']**2
+        #Omc = self.params['omch2'] / self.params['h']**2
+        Om0 = 0.3 # <- matching what yosuke's code does right now, this is always faixed
+
+        self.reference_cosmology = LCDMCosmology(h, Om0)
 
     def set_ir_resum_params(self, h:float, D:float):
         """Initializes IR Resummation calculation object
@@ -86,11 +94,15 @@ class analytic_eft_model():
             analytic_params_list (list): list of parameters used for the counterterms and shot-noise terms
         """
         
-        # create a dictionary of parameters for a given (very long) parameter vector. 
         i = 0
         for pname in emu_params_list:
-            self.params[pname] = param_vector[i]
-            i += 1
+            if pname in list(self.params_bias.keys()):
+                for (ps, z) in itertools.product(range(self.num_tracers), range(self.num_zbins)):
+                    self.params['%s_%s_%s' % (pname, ps, z)] = param_vector[i]
+                    i += 1
+            else:
+                self.params[pname] = param_vector[i]
+                i += 1
         
         for (ps, z) in itertools.product(range(self.num_tracers), range(self.num_zbins)):
             for pname in analytic_params_list:
@@ -106,6 +118,7 @@ class analytic_eft_model():
 
         # set cosmology
         self.cosmology = LCDMCosmology(self.params["h"], self.params["Omega_m"])
+        self._set_reference_cosmology()
 
         # linear growth factor & linear growth rate
         self.cosmology.set_Omega_m0(self.params["Omega_m"])
@@ -278,55 +291,56 @@ class analytic_eft_model():
         ctr_NLO = (ctr1["counterterm_fog"] + ctr2["counterterm_fog"])/2. * f**4 * mu**4 * (b1_1 + f * mu**2)* (b1_2 + f * mu**2)
         ctr_NLO = - np.kron(k**4, ctr_NLO).reshape(len(k),len(mu)) * plin_tile
 
+        #return ctr_NLO
         return ctr_LO + ctr_NLO
 
-    # def get_pkmu_for_ctr1_ref(self, k_ref, mu_ref, alpha_perp, alpha_para, irres=True):
-    #     k_ref = np.atleast_1d(k_ref)
-    #     mu_ref = np.atleast_1d(mu_ref)
+    def get_pkmu_for_ctr1_ref(self, k_ref, mu_ref, alpha_perp, alpha_para, irres=True):
+        k_ref = np.atleast_1d(k_ref)
+        mu_ref = np.atleast_1d(mu_ref)
 
-    #     # mapping of (k, mu)
-    #     fac = np.sqrt(1 + mu_ref**2 * ((alpha_perp / alpha_para)**2 - 1))
-    #     mu = mu_ref * (alpha_perp / alpha_para) / fac
-    #     k = np.kron(k_ref, fac).reshape(len(k_ref), len(mu_ref)) / alpha_perp
+        # mapping of (k, mu)
+        fac = np.sqrt(1 + mu_ref**2 * ((alpha_perp / alpha_para)**2 - 1))
+        mu = mu_ref * (alpha_perp / alpha_para) / fac
+        k = np.kron(k_ref, fac).reshape(len(k_ref), len(mu_ref)) / alpha_perp
 
         # spline interpolation of mu^l k^2 P_lin(k)
-    #     k_grid = np.geomspace(np.max([np.min(k), self._kmin_fft]), np.min([np.max(k), self._kmax_fft]), self._nmax_fft)
-    #     mu_grid = np.linspace(0., 1., 51)
-    #     # k2mul = np.kron(k_grid**2, mu_grid**l).reshape(len(k_grid), len(mu_grid))
-    #     if irres:
-    #         pkmu_grid = self.get_pk_lin_irres_rsd(k_grid, mu_grid)
-    #     else:
-    #         pkmu_grid = np.tile(self.get_pk_lin(k_grid), (len(mu_grid),1)).T
+        k_grid = np.geomspace(np.max([np.min(k), self._kmin_fft]), np.min([np.max(k), self._kmax_fft]), self._nmax_fft)
+        mu_grid = np.linspace(0., 1., 51)
+        # k2mul = np.kron(k_grid**2, mu_grid**l).reshape(len(k_grid), len(mu_grid))
+        if irres:
+            pkmu_grid = self.get_pk_lin_irres_rsd(k_grid, mu_grid)
+        else:
+            pkmu_grid = np.tile(self.get_pk_lin(k_grid), (len(mu_grid),1)).T
 
-    #     pkmu_interp = RectBivariateSpline(k_grid, mu_grid, pkmu_grid)
-    #     pkmu = pkmu_interp.ev(k, np.tile(mu, (len(k_ref), 1)))
-    #     pkmu = pkmu / (alpha_perp**2 * alpha_para)
+        pkmu_interp = RectBivariateSpline(k_grid, mu_grid, pkmu_grid)
+        pkmu = pkmu_interp.ev(k, np.tile(mu, (len(k_ref), 1)))
+        pkmu = pkmu / (alpha_perp**2 * alpha_para)
 
-    #     if len(k_ref) == 1 or len(mu_ref) == 1:
-    #         pkmu = np.ravel(pkmu)
-    #     return pkmu
+        if len(k_ref) == 1 or len(mu_ref) == 1:
+            pkmu = np.ravel(pkmu)
+        return pkmu
     
-    # def get_pk_ell_ctr1_ref(self, k_ref, ells, alpha_perp, alpha_para, irres=True):
-    #     k_ref = np.atleast_1d(k_ref)
-    #     mu_ref = np.linspace(0.,1.,2**8+1)
-    #     dmu = mu_ref[1] - mu_ref[0]
+    def get_pk_ell_ctr1_ref(self, k_ref, ells, alpha_perp, alpha_para, irres=True):
+        k_ref = np.atleast_1d(k_ref)
+        mu_ref = np.linspace(0.,1.,2**8+1)
+        dmu = mu_ref[1] - mu_ref[0]
 
-    #     coeffs = np.array([self.get_coeff_ctr1_multipole(l) for l in ells])
-    #     coeffs = np.tile(coeffs, (len(k_ref), 1)).T
+        coeffs = np.array([self.get_coeff_ctr1_multipole(l) for l in ells])
+        coeffs = np.tile(coeffs, (len(k_ref), 1)).T
 
-    #     # mapping of (k, mu)
-    #     fac = np.sqrt(1 + mu_ref**2 * ((alpha_perp / alpha_para)**2 - 1))
-    #     mu = mu_ref * (alpha_perp / alpha_para) / fac
-    #     k = np.kron(k_ref, fac).reshape(len(k_ref), len(mu_ref)) / alpha_perp
+        # mapping of (k, mu)
+        fac = np.sqrt(1 + mu_ref**2 * ((alpha_perp / alpha_para)**2 - 1))
+        mu = mu_ref * (alpha_perp / alpha_para) / fac
+        k = np.kron(k_ref, fac).reshape(len(k_ref), len(mu_ref)) / alpha_perp
 
-    #     pkmu_ref = self.get_pkmu_for_ctr1_ref(k_ref, mu_ref, alpha_perp, alpha_para, irres=irres)
+        pkmu_ref = self.get_pkmu_for_ctr1_ref(k_ref, mu_ref, alpha_perp, alpha_para, irres=irres)
 
-    #     pkmu_ref = np.tile(pkmu_ref, (len(ells),1,1))
-    #     legendre = np.array([np.tile((2*l+1) * lpmv(0,l,mu_ref) * mu**l * self.fgrowth**(l/2), (len(k_ref),1)) * k**2 for l in ells])
-    #     pk_ell_ctr1 = - 2 * romb(pkmu_ref * legendre, dx=dmu, axis=2)
-    #     pk_ell_ctr1 = coeffs * pk_ell_ctr1
+        pkmu_ref = np.tile(pkmu_ref, (len(ells),1,1))
+        legendre = np.array([np.tile((2*l+1) * lpmv(0,l,mu_ref) * mu**l * self.fgrowth**(l/2), (len(k_ref),1)) * k**2 for l in ells])
+        pk_ell_ctr1 = - 2 * romb(pkmu_ref * legendre, dx=dmu, axis=2)
+        pk_ell_ctr1 = coeffs * pk_ell_ctr1
 
-    #     return pk_ell_ctr1
+        return pk_ell_ctr1
 
 
     def get_stochastic_terms(self, k:np.array, mu:np.array, stoch1:dict, k_nl:float, is_cross:bool=False):
@@ -420,6 +434,10 @@ class analytic_eft_model():
                 pkmu = np.tile(pkmu, (len(self.ells),1,1))
                 legendre = np.array([np.tile((2*l+1) * lpmv(0,l,self.mu), (len(self.k),1)) for l in self.ells])
                 pk_ell[z, ps_idx] = romb(pkmu * legendre, dx=self.dmu, axis=2)
+                
+                # pk_ell_ctr1 = self.get_pk_ell_ctr1_ref(self.k, self.ells, self.alpha_perp, self.alpha_para, irres=True)
+                # pk_ell = pk_ell + pk_ell_ctr1
+
                 ps_idx += 1
 
         return pk_ell.transpose(1,0,3,2) / (self.params["h"])**3
