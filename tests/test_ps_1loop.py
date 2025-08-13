@@ -1,8 +1,8 @@
-import ps_theory_calculator
-import numpy as np
-import yaml, os
+# import ps_theory_calculator
+# import numpy as np
+# import yaml, os
 
-from spherex_emu.utils import *
+# from spherex_emu.utils import *
 
 # def test_ps_multi_sample_multi_redshift():
 
