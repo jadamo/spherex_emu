@@ -13,6 +13,7 @@ notebooks/
 chains/
 plots/
 data/
+configs/
 
 # Ignore temporary files created by editors
 *~
