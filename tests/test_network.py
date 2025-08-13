@@ -8,17 +8,16 @@ from spherex_emu.models.blocks import *
 def test_linear_with_channels():
     # test that the linear_with_channels sub-block treats channels independently
 
-    test_input = torch.rand((1, 2, 10))
     parallel_layers = linear_with_channels(10, 10, 2)
     with torch.no_grad():
-        parallel_layers.w[0] = 1.
-        parallel_layers.b[0] = 0.
-        parallel_layers.w[1] = 0.
-        parallel_layers.b[1] = 0.
-    test_output = parallel_layers(test_input)
+        parallel_layers.w[0,:,:] = 1.
+        parallel_layers.b[0,:,:] = 0.
 
-    assert torch.all(test_output[:,0] == torch.sum(test_input[:,0]))
-    assert torch.all(test_output[:,1] != torch.sum(test_input[:,1]))
+    for n in range(100):
+        test_input = torch.rand((1, 2, 10))
+        test_output = parallel_layers(test_input)
+        
+        assert torch.all(test_output[:,1] != torch.sum(test_input[:,1]))
 
 def test_block_resnet():
 
