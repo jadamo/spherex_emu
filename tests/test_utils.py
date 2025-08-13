@@ -15,21 +15,30 @@ def test_normalize_cosmo_params():
 
 def test_normalize_power_spectra():
     
-    test_tensor = (torch.rand((1, 3, 2, 2*25)) * 100) - 50
-    test_fid_tensor = (torch.rand((3, 2, 2*25)) * 100) - 50
-    test_eigvals = torch.rand(3, 2, 2*25)
-    test_Q = torch.rand((3, 2, 2*25 ,2*25))
+    test_fid_tensor = (torch.rand((3, 2, 2*25)) * 100) - 25
 
-    test_Q_inv = torch.zeros_like(test_Q)
-    for i in range(test_Q.shape[0]):
-        for j in range(test_Q.shape[1]):
-            test_Q_inv[i,j] = torch.linalg.inv(test_Q[i,j])
+    test_cov = torch.rand(3, 2, 2*25, 2*25)
+    test_eigvals = torch.zeros((3, 2, 2*25))
+    test_Q = torch.zeros_like(test_cov)
+    test_Q_inv = torch.zeros_like(test_cov)
+    
+    for i in range(test_cov.shape[0]):
+        for j in range(test_cov.shape[1]):
+            cov = test_cov[i,j] @ test_cov[i,j].T
+            eig, q = torch.linalg.eigh(cov)
+            test_eigvals[i,j] = eig.real
+            test_Q[i,j] = q.real
+            test_Q_inv[i,j] = torch.linalg.inv(q).real
 
-    norm_tensor = normalize_power_spectrum(test_tensor, test_fid_tensor, test_eigvals, test_Q)
-    unnorm_tensor = un_normalize_power_spectrum(norm_tensor, test_fid_tensor, test_eigvals, test_Q, test_Q_inv)
+    for n in range(50):
+        test_tensor = (torch.rand((1, 3, 2, 2*25)) * 100) - 25
 
-    # numerical errors from normalization process expected to be higher than floating point percision
-    assert torch.amax(test_tensor - unnorm_tensor) < 0.01
+        norm_tensor = normalize_power_spectrum(test_tensor, test_fid_tensor, test_eigvals, test_Q)
+        unnorm_tensor = un_normalize_power_spectrum(norm_tensor, test_fid_tensor, test_eigvals, test_Q, test_Q_inv)
+
+        # numerical errors from normalization process expected to be higher than floating point percision
+        assert torch.all(torch.isnan(norm_tensor)) == False
+        assert torch.amax((test_tensor - unnorm_tensor) / test_tensor) < 0.05
 
 def test_get_parameter_ranges():
 

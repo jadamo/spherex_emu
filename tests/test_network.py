@@ -3,7 +3,7 @@ import numpy as np
 import os
 
 import spherex_emu.emulator as emulator
-from spherex_emu.models.blocks import linear_with_channels
+from spherex_emu.models.blocks import *
 
 def test_linear_with_channels():
     # test that the linear_with_channels sub-block treats channels independently
@@ -19,6 +19,16 @@ def test_linear_with_channels():
 
     assert torch.all(test_output[:,0] == torch.sum(test_input[:,0]))
     assert torch.all(test_output[:,1] != torch.sum(test_input[:,1]))
+
+def test_block_resnet():
+
+    test_input = torch.rand((100, 10))
+    resnet_block = block_resnet(10, 10, 2, True)
+    test_output = resnet_block(test_input)
+
+    assert test_output.shape == (100, 10)
+    assert not torch.all(torch.isnan(test_output))
+    assert not torch.all(torch.isinf(test_output))
 
 def test_stacked_transformer_network():
 

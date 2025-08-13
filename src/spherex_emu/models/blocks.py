@@ -61,9 +61,16 @@ class block_resmlp(nn.Module):
 
 class block_resnet(nn.Module):
     
-    def __init__(self, input_dim, output_dim, num_layers,
-                 skip_connection):
-        
+    def __init__(self, input_dim:int, output_dim:int, num_layers:int, skip_connection:bool=True):
+        """Initializes a resnet MLP block
+
+        Args:
+            input_dim (int): input dimension.
+            output_dim (int): output dimension. All layers except for the first one will have this dimension
+            num_layers (int): numer of layers to include in the block. Except for the first layer, will all have shape (output_dim, output_dim)
+            skip_connection (bool, optional): whether to include a redidual connection, where the input is add
+                to the output. Defaults to True.
+        """
         super().__init__()
 
         self.layers = nn.Sequential()
