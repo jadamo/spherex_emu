@@ -10,10 +10,11 @@ def test_linear_with_channels():
 
     test_input = torch.rand((1, 2, 10))
     parallel_layers = linear_with_channels(10, 10, 2)
-    parallel_layers.initialize_params("He")
     with torch.no_grad():
         parallel_layers.w[0] = 1.
         parallel_layers.b[0] = 0.
+        parallel_layers.w[1] = 0.
+        parallel_layers.b[1] = 0.
     test_output = parallel_layers(test_input)
 
     assert torch.all(test_output[:,0] == torch.sum(test_input[:,0]))
@@ -31,11 +32,11 @@ def test_stacked_transformer_network():
     test_input = torch.randn(1, test_emulator.num_cosmo_params + \
                                 (test_emulator.num_nuisance_params *test_emulator.num_zbins * test_emulator.num_tracers),
                                 device = test_emulator.device)
-    test_emulator.model.eval()
-    test_input = test_emulator.model.organize_parameters(test_input)
+    test_emulator.galaxy_ps_model.eval()
+    test_input = test_emulator.galaxy_ps_model.organize_parameters(test_input)
 
-    test_output_sub = test_emulator.model.forward(test_input, 0)
-    test_output_full = test_emulator.model.forward(test_input)
+    test_output_sub = test_emulator.galaxy_ps_model.forward(test_input, 0)
+    test_output_full = test_emulator.galaxy_ps_model.forward(test_input)
 
     assert torch.all(torch.isnan(test_output_full)) == False
     assert torch.all(torch.isinf(test_output_full)) == False

@@ -9,10 +9,14 @@ build/
 
 # Ignore other optional directories
 emulators/
+notebooks/
 chains/
 plots/
+data/
 
 # Ignore temporary files created by editors
 *~
 *.swp
 settings.json
+.vscode/
+.pytest_cache/
