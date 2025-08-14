@@ -38,27 +38,6 @@ class linear_with_channels(nn.Module):
         X = X.permute(1, 0, 2) # <- [channels, batch, out] -> [batch, channels, out]
         return X
 
-class block_resmlp(nn.Module):
-
-    def __init__(self, input_dim, output_dim, num_layers,
-                 skip_connection):
-        
-        super().__init__()
-
-        self.layers = nn.Sequential()
-        self.layers.add_module("layer0",    nn.Linear(input_dim, output_dim))
-        self.layers.add_module("ReLU", nn.ReLU())
-        for i in range(num_layers-1):
-            self.layers.add_module("layer"+str(i+1), nn.Linear(output_dim, output_dim))
-            self.layers.add_module("ReLU",      nn.ReLU())
-    
-        if skip_connection:
-            self.skip_layer = nn.Linear(input_dim, output_dim)
-
-    def forward(self, X):
-        Y = self.layers(X)
-        return Y + self.skip_layer(X)
-
 class block_resnet(nn.Module):
     
     def __init__(self, input_dim:int, output_dim:int, num_layers:int, skip_connection:bool=True):
@@ -70,8 +49,13 @@ class block_resnet(nn.Module):
             num_layers (int): numer of layers to include in the block. Except for the first layer, will all have shape (output_dim, output_dim)
             skip_connection (bool, optional): whether to include a redidual connection, where the input is add
                 to the output. Defaults to True.
+        Raises:
+            ValueError: If input_dim, output_dim, or num_layers are equal to 0
         """
         super().__init__()
+
+        if input_dim <= 0 or output_dim <= 0 or num_layers <= 0:
+            raise ValueError("Block structure parameters must be > 0")
 
         self.layers = nn.Sequential()
         self.layers.add_module("layer0",    nn.Linear(input_dim, output_dim))
@@ -173,25 +157,37 @@ class block_addnorm(nn.Module):
         return self.layerNorm(self.dropoiut(Y) + X)
     
 class block_transformer_encoder(nn.Module):
-    """
-    """
+    """_summary_"""
 
     def __init__(self, hidden_dim, num_channels, dropout_prob=0.):
+        """_summary_
+
+        Args:
+            hidden_dim (_type_): _description_
+            num_channels (_type_): _description_
+            dropout_prob (_type_, optional): _description_. Defaults to 0..
+
+        Raises:
+            ValueError: If hidden dim or num_channels are invalid. Both values must be > 0 and hidden_dim / num_channels != 0
+        """
         super().__init__()
         self.hidden_dim = hidden_dim
         self.num_channels = num_channels
+        self._check_inputs(hidden_dim, num_channels)
 
-        #self.ln1 = nn.LayerNorm(self.hidden_dim)
         #self.attention = multi_headed_attention(self.hidden_dim, 1, dropout_prob)
         self.attention = nn.MultiheadAttention(int(self.hidden_dim), 1, dropout_prob, batch_first=True)
-        #self.addnorm1 = block_addnorm(self.hidden_dim, dropout_prob)
 
         #feed-forward network
-        #self.ln2 = nn.LayerNorm(self.hidden_dim)
-        #self.h1 = nn.Linear(int(self.hidden_dim / num_channels), int(self.hidden_dim / num_channels))
         self.h1 = linear_with_channels(int(self.hidden_dim/num_channels), int(self.hidden_dim/num_channels), num_channels)
         self.activation = activation_function(int(self.hidden_dim/num_channels))
         #self.addnorm2 = block_addnorm(self.hidden_dim, dropout_prob)
+
+    def _check_inputs(self, hidden_dim, num_channels):
+        if hidden_dim <= 0 or num_channels <= 0:
+            raise ValueError(f"All block structure parameters must be >= 0, but got embedding_dim={hidden_dim} and split_dim={num_channels}")
+        if int(hidden_dim / num_channels) == 0:
+            raise ValueError(f"Embedding dim / split_dim must be != 0")
 
     def forward(self, X):
         X = torch.unsqueeze(X, 1)

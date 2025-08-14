@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import os
+import pytest
 
 import spherex_emu.emulator as emulator
 from spherex_emu.models.blocks import *
@@ -19,15 +20,46 @@ def test_linear_with_channels():
         
         assert torch.all(test_output[:,1] != torch.sum(test_input[:,1]))
 
-def test_block_resnet():
+@pytest.mark.parametrize("input_dim, output_dim, num_layers, expected", [
+    (10, 10, 2, None), 
+    (1, 10, 3, None),
+    (0, 10, 3, ValueError),
+    (10, 0, 3, ValueError),
+    (10, 10, 0, ValueError),
+])
+def test_block_resnet(input_dim, output_dim, num_layers, expected):
 
-    test_input = torch.rand((100, 10))
-    resnet_block = block_resnet(10, 10, 2, True)
-    test_output = resnet_block(test_input)
+    if isinstance(expected, type) and issubclass(expected, Exception):
+        with pytest.raises(expected):
+            resnet_block = block_resnet(input_dim, output_dim, num_layers, True)
+    else:
+        test_input = torch.rand((100, input_dim))
+        resnet_block = block_resnet(input_dim, output_dim, num_layers, True)
+        test_output = resnet_block(test_input)
 
-    assert test_output.shape == (100, 10)
-    assert not torch.all(torch.isnan(test_output))
-    assert not torch.all(torch.isinf(test_output))
+        assert test_output.shape == (100, output_dim)
+        assert not torch.all(torch.isnan(test_output))
+        assert not torch.all(torch.isinf(test_output))
+
+@pytest.mark.parametrize("embedding_dim, split_dim, expected", [
+    (10, 10, None),
+    (10, 5, None), 
+    (2, 10, ValueError),
+    (0, 10, ValueError),
+    (10, 0, ValueError),
+])
+def test_transformer_block(embedding_dim, split_dim, expected):
+    if isinstance(expected, type) and issubclass(expected, Exception):
+        with pytest.raises(expected):
+            transformer_block = block_transformer_encoder(embedding_dim, split_dim, 0.1)
+    else:
+        transformer_block = block_transformer_encoder(embedding_dim, split_dim, 0.1)
+        test_input = torch.rand(100, embedding_dim)
+        test_output = transformer_block(test_input)
+
+        assert test_output.shape == (100, embedding_dim)
+        assert not torch.all(torch.isnan(test_output))
+        assert not torch.all(torch.isinf(test_output))
 
 def test_stacked_transformer_network():
 
