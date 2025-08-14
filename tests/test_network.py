@@ -46,6 +46,7 @@ def test_block_resnet(input_dim, output_dim, num_layers, expected):
     (10, 5, None), 
     (2, 10, ValueError),
     (0, 10, ValueError),
+    (10, 4, ValueError),
     (10, 0, ValueError),
 ])
 def test_transformer_block(embedding_dim, split_dim, expected):
