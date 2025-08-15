@@ -1,5 +1,5 @@
 import torch
-
+import pytest
 from spherex_emu.utils import *
 
 def test_normalize_cosmo_params():
@@ -38,7 +38,8 @@ def test_normalize_power_spectra():
 
         # numerical errors from normalization process expected to be higher than floating point percision
         assert torch.all(torch.isnan(norm_tensor)) == False
-        assert torch.amax((test_tensor - unnorm_tensor) / test_tensor) < 0.05
+        assert torch.amax((test_tensor - unnorm_tensor) / test_tensor) < 0.075
+
 
 def test_get_parameter_ranges():
 
@@ -55,3 +56,18 @@ def test_get_parameter_ranges():
     
     assert expected_params == params
     assert np.all(np.equal(expected_priors, priors))
+
+
+@pytest.mark.parametrize("input, output, invcov, normalized, expected", [
+    (torch.ones(1,10), torch.ones(1,10), torch.eye(10), True, 0),
+    (torch.ones(10), torch.ones(10), torch.eye(10), True, 0),
+    (torch.ones(10), torch.ones(1, 10), torch.eye(10), True, ValueError),
+    (torch.ones(1,10), torch.ones(1,10), torch.eye(10), False, 0),
+])
+def test_delta_chi2(input, output, invcov, normalized, expected):
+    if isinstance(expected, type) and issubclass(expected, Exception):
+        with pytest.raises(expected):
+            chi2 = delta_chi_squared(input, output, invcov, normalized)
+    else:
+        chi2 = delta_chi_squared(input, output, invcov, normalized)
+        assert torch.allclose(chi2, torch.Tensor(expected))

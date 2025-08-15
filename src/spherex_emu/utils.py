@@ -386,10 +386,15 @@ def delta_chi_squared(predict:torch.Tensor, target:torch.Tensor, invcov:torch.Te
                         torch.matmul(invcov[z], 
                         delta[:,z].flatten()))
         else:
-            raise ValueError("Expected input data with 2 or 5 dimensions, but got " + str(delta.dim()))
+            raise ValueError(f"Expected input data with 2 or 5 dimensions, but got {delta.dim()}")
     else:
-        assert len(delta.shape) == 2
-        chi2 = torch.bmm(delta.unsqueeze(1), delta.unsqueeze(2)).squeeze()
+        if delta.dim() == 1:
+            delta = delta.unsqueeze(0)
+            chi2 = torch.bmm(delta.unsqueeze(1), delta.unsqueeze(2)).squeeze()
+        elif delta.dim() == 2:
+            chi2 = torch.bmm(delta.unsqueeze(1), delta.unsqueeze(2)).squeeze()
+        else:
+            raise ValueError(f"Expected input data with 2 dimensions, but got {delta.dim()}")
 
     chi2 = torch.sum(chi2)
     return chi2
