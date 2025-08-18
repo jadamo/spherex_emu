@@ -8,8 +8,17 @@ from spherex_emu.emulator import pk_emulator, compile_multiple_device_training_r
 from spherex_emu.utils import calc_avg_loss, mse_loss, normalize_cosmo_params, pca_inverse_transform
 
 
-def train_galaxy_ps_one_epoch(emulator:pk_emulator, train_loader, bin_idx):
-    """basic training loop"""
+def train_galaxy_ps_one_epoch(emulator:pk_emulator, train_loader:torch.utils.data.DataLoader, bin_idx:list):
+    """Runs through one epoch of training for one sub-network in the galaxy_ps model
+
+    Args:
+        emulator (pk_emulator): emulator object to train
+        train_loader (torch.utils.data.DataLoader): training data to loop through
+        bin_idx (list): bin index [ps, z] identifying the sub-network to train.
+
+    Returns:
+        avg_loss (torch.Tensor): Average training-set loss. Used for backwards propagation
+    """
     total_loss = 0.
     total_time = 0
     ps_idx = bin_idx[0]
@@ -47,7 +56,16 @@ def train_galaxy_ps_one_epoch(emulator:pk_emulator, train_loader, bin_idx):
 
 
 def train_nw_ps_one_epoch(emulator:pk_emulator, train_loader):
-    """basic training loop"""
+    """Runs through one epoch of training for the non-wiggle linear power spectrum model.
+    NOTE: This is experimental and not currently used!
+
+    Args:
+        emulator (pk_emulator): emulator object to train
+        train_loader (torch.utils.data.DataLoader): training data to loop through
+
+    Returns:
+        avg_loss (torch.Tensor): Average training-set loss. Used for backwards propagation
+    """
     total_loss = 0.
     total_time = 0
     for (i, batch) in enumerate(train_loader):
@@ -79,7 +97,11 @@ def train_nw_ps_one_epoch(emulator:pk_emulator, train_loader):
 
 
 def train_on_single_device(emulator:pk_emulator):
-    """Trains the network"""
+    """Trains the emulator on a single device (cpu or gpu)
+
+    Args:
+        emulator (pk_emulator): network object to train.
+    """
 
     # load training / validation datasets
     train_loader = emulator.load_data("training", emulator.training_set_fraction)
@@ -148,8 +170,19 @@ def train_on_single_device(emulator:pk_emulator):
         # if epochs_since_update[-1] > emulator.early_stopping_epochs:
         #     print("Non-wiggle net has not impvored for {:0.0f} epochs. Initiating early stopping...".format(epochs_since_update[-1]), flush=True)
 
-def train_on_multiple_devices(gpu_id, net_indeces, config_dir):
-    
+
+def train_on_multiple_devices(gpu_id:int, net_indeces:list, config_dir:str):
+    """Trains the given network on multiple gpu devices by splitting.
+
+    This function is called in parralel using multiproccesing, and works by training specific sub-networks 
+    on seperate gpus, each saving to a seperate sub-directory. After 25 epochs have passed on gpu 0, the results from all gpus are compiles together
+    and saved in the base save directory
+
+    Args:
+        gpu_id (int): gpu number for logging and organizing save location.
+        net_indeces (list): List of sub-network indices to train on the given gpu. This is different for each gpu
+        config_dir (str): Location of the input network config file.
+    """
     # Each sub-process gets its own indpendent emulator object, where it will train the corresponding
     # sub-networks based on net_indeces
     device = torch.device(f"cuda:{gpu_id}")

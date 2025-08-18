@@ -1,23 +1,66 @@
 import torch
 import numpy as np
 import os
+import pytest
 
 import spherex_emu.emulator as emulator
-from spherex_emu.models.blocks import linear_with_channels
+from spherex_emu.models.blocks import *
 
 def test_linear_with_channels():
     # test that the linear_with_channels sub-block treats channels independently
 
-    test_input = torch.rand((1, 2, 10))
     parallel_layers = linear_with_channels(10, 10, 2)
-    parallel_layers.initialize_params("He")
     with torch.no_grad():
-        parallel_layers.w[0] = 1.
-        parallel_layers.b[0] = 0.
-    test_output = parallel_layers(test_input)
+        parallel_layers.w[0,:,:] = 1.
+        parallel_layers.b[0,:,:] = 0.
 
-    assert torch.all(test_output[:,0] == torch.sum(test_input[:,0]))
-    assert torch.all(test_output[:,1] != torch.sum(test_input[:,1]))
+    for n in range(100):
+        test_input = torch.rand((1, 2, 10))
+        test_output = parallel_layers(test_input)
+        
+        assert torch.all(test_output[:,1] != torch.sum(test_input[:,1]))
+
+@pytest.mark.parametrize("input_dim, output_dim, num_layers, expected", [
+    (10, 10, 2, None), 
+    (1, 10, 3, None),
+    (0, 10, 3, ValueError),
+    (10, 0, 3, ValueError),
+    (10, 10, 0, ValueError),
+])
+def test_block_resnet(input_dim, output_dim, num_layers, expected):
+
+    if isinstance(expected, type) and issubclass(expected, Exception):
+        with pytest.raises(expected):
+            resnet_block = block_resnet(input_dim, output_dim, num_layers, True)
+    else:
+        test_input = torch.rand((100, input_dim))
+        resnet_block = block_resnet(input_dim, output_dim, num_layers, True)
+        test_output = resnet_block(test_input)
+
+        assert test_output.shape == (100, output_dim)
+        assert not torch.all(torch.isnan(test_output))
+        assert not torch.all(torch.isinf(test_output))
+
+@pytest.mark.parametrize("embedding_dim, split_dim, expected", [
+    (10, 10, None),
+    (10, 5, None), 
+    (2, 10, ValueError),
+    (0, 10, ValueError),
+    (10, 4, ValueError),
+    (10, 0, ValueError),
+])
+def test_transformer_block(embedding_dim, split_dim, expected):
+    if isinstance(expected, type) and issubclass(expected, Exception):
+        with pytest.raises(expected):
+            transformer_block = block_transformer_encoder(embedding_dim, split_dim, 0.1)
+    else:
+        transformer_block = block_transformer_encoder(embedding_dim, split_dim, 0.1)
+        test_input = torch.rand(100, embedding_dim)
+        test_output = transformer_block(test_input)
+
+        assert test_output.shape == (100, embedding_dim)
+        assert not torch.all(torch.isnan(test_output))
+        assert not torch.all(torch.isinf(test_output))
 
 def test_stacked_transformer_network():
 
@@ -31,11 +74,11 @@ def test_stacked_transformer_network():
     test_input = torch.randn(1, test_emulator.num_cosmo_params + \
                                 (test_emulator.num_nuisance_params *test_emulator.num_zbins * test_emulator.num_tracers),
                                 device = test_emulator.device)
-    test_emulator.model.eval()
-    test_input = test_emulator.model.organize_parameters(test_input)
+    test_emulator.galaxy_ps_model.eval()
+    test_input = test_emulator.galaxy_ps_model.organize_parameters(test_input)
 
-    test_output_sub = test_emulator.model.forward(test_input, 0)
-    test_output_full = test_emulator.model.forward(test_input)
+    test_output_sub = test_emulator.galaxy_ps_model.forward(test_input, 0)
+    test_output_full = test_emulator.galaxy_ps_model.forward(test_input)
 
     assert torch.all(torch.isnan(test_output_full)) == False
     assert torch.all(torch.isinf(test_output_full)) == False

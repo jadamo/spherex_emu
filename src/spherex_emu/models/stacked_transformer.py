@@ -62,7 +62,7 @@ class single_transformer(nn.Module):
 
         self.output_layer = nn.Linear(embedding_dim, self.output_dim)
 
-    def forward(self, input_params):
+    def forward(self, input_params:torch.Tensor):
         """Passes an input tensor through the network"""
 
         if not self.is_cross_spectra:

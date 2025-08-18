@@ -3,18 +3,26 @@ import torch.nn as nn
 from torch.nn import functional as F
 import numpy as np
 
-#https://github.com/pytorch/pytorch/issues/36591
-class linear_with_channels(nn.Module):
 
-    def __init__(self, input_dim, output_dim, num_channels):
+class linear_with_channels(nn.Module):
+    """Class for independent MLP layers passed-through in parallel"""
+
+    def __init__(self, input_dim:int, output_dim:int, num_channels:int):
+        """Initializes a series of independent MLP layers based on the discussion at
+        https://github.com/pytorch/pytorch/issues/36591.
+
+        Args:
+            input_dim (int): size of the input to the layer. Should be >0
+            output_dim (int): size of the output of the layer. Should be >0
+            num_channels (int): number of independent layers to create. Should be >1
+        """
         super().__init__()
         
         self.w = nn.Parameter(torch.zeros(num_channels, input_dim, output_dim))
-        # with torch.no_grad():
-        #     self.w[1,:,:] = torch.ones(input_dim, output_dim)
         self.b = nn.Parameter(torch.zeros(num_channels, 1, output_dim))
 
     def initialize_params(self, weight_initialization):
+        """function for initializing layer weights, since pytorch struggles to do so automatically"""
         if weight_initialization == "He":
             torch.nn.init.kaiming_uniform_(self.w)
             fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(self.w)
@@ -29,8 +37,16 @@ class linear_with_channels(nn.Module):
             nn.init.normal_(self.w, mean=0., std=0.1)
             nn.init.zeros_(self.w)
 
-    def forward(self, X):
-        
+    def forward(self, X:torch.Tensor):
+        """passes through the layer
+
+        Args:
+            X (torch.Tensor): Input to the layer. Should have shape (batch_size, num_channels, input_dim)
+
+        Returns:
+            X: (torch.Tensor): output of the layer. Has shape (batch_size, num_channels, output_dim)
+        """
+
         # [b, c, in] x [b, in, out] = [b, c, out]
         # [c, b, in] x [c, in, out] = [c, b, out]
         X = X.permute(1, 0, 2) # <- [batch, channels, in] -> [channels, batch, in]
@@ -38,33 +54,24 @@ class linear_with_channels(nn.Module):
         X = X.permute(1, 0, 2) # <- [channels, batch, out] -> [batch, channels, out]
         return X
 
-class block_resmlp(nn.Module):
-
-    def __init__(self, input_dim, output_dim, num_layers,
-                 skip_connection):
-        
-        super().__init__()
-
-        self.layers = nn.Sequential()
-        self.layers.add_module("layer0",    nn.Linear(input_dim, output_dim))
-        self.layers.add_module("ReLU", nn.ReLU())
-        for i in range(num_layers-1):
-            self.layers.add_module("layer"+str(i+1), nn.Linear(output_dim, output_dim))
-            self.layers.add_module("ReLU",      nn.ReLU())
-    
-        if skip_connection:
-            self.skip_layer = nn.Linear(input_dim, output_dim)
-
-    def forward(self, X):
-        Y = self.layers(X)
-        return Y + self.skip_layer(X)
-
 class block_resnet(nn.Module):
     
-    def __init__(self, input_dim, output_dim, num_layers,
-                 skip_connection):
-        
+    def __init__(self, input_dim:int, output_dim:int, num_layers:int, skip_connection:bool=True):
+        """Initializes a resnet MLP block
+
+        Args:
+            input_dim (int): input dimension.
+            output_dim (int): output dimension. All layers except for the first one will have this dimension
+            num_layers (int): numer of layers to include in the block. Except for the first layer, will all have shape (output_dim, output_dim)
+            skip_connection (bool, optional): whether to include a redidual connection, where the input is add
+                to the output. Defaults to True.
+        Raises:
+            ValueError: If input_dim, output_dim, or num_layers are equal to 0
+        """
         super().__init__()
+
+        if input_dim <= 0 or output_dim <= 0 or num_layers <= 0:
+            raise ValueError("Block structure parameters must be > 0")
 
         self.layers = nn.Sequential()
         self.layers.add_module("layer0",    nn.Linear(input_dim, output_dim))
@@ -78,7 +85,15 @@ class block_resnet(nn.Module):
             self.skip_layer = nn.Linear(input_dim, output_dim)
             self.bn = nn.BatchNorm1d(output_dim)
 
-    def forward(self, X):
+    def forward(self, X:torch.Tensor):
+        """Passes through the block
+
+        Args:
+            X (torch.Tensor): input to the block. Should have shape (batch_size, input_dim)
+
+        Returns:
+            X (torch.Tensor): output of the block. Has shape (batch_size, output_dim)
+        """
         Y = self.layers(X)
         return Y + self.bn(self.skip_layer(X))
 
@@ -166,45 +181,82 @@ class block_addnorm(nn.Module):
         return self.layerNorm(self.dropoiut(Y) + X)
     
 class block_transformer_encoder(nn.Module):
-    """
-    """
+    """Custom transformer encoder class"""
 
-    def __init__(self, hidden_dim, num_channels, dropout_prob=0.):
+    def __init__(self, embedding_dim:int, split_dim:int, dropout_prob=0.):
+        """Initializes the transformer encoder block
+
+        Args:
+            embedding_dim (int): size of the embedded input to the block. Should be divisible by split_dim
+            split_dim (int): size of each independent feed-forward layer. Should be a factor of embedding_dim
+            dropout_prob (float, optional): probability a given weight is dropped during training. Defaults to 0..
+
+        Raises:
+            ValueError: If hidden dim or split_dim are invalid. Both values must be > 0 and embedding_dim divisible by split_dim
+        """
         super().__init__()
-        self.hidden_dim = hidden_dim
-        self.num_channels = num_channels
+        self.embedding_dim = embedding_dim
+        self.split_dim = split_dim
+        self._check_inputs(embedding_dim, split_dim)
 
-        #self.ln1 = nn.LayerNorm(self.hidden_dim)
-        #self.attention = multi_headed_attention(self.hidden_dim, 1, dropout_prob)
-        self.attention = nn.MultiheadAttention(int(self.hidden_dim), 1, dropout_prob, batch_first=True)
-        #self.addnorm1 = block_addnorm(self.hidden_dim, dropout_prob)
+        #self.attention = multi_headed_attention(self.embedding_dim, 1, dropout_prob)
+        self.attention = nn.MultiheadAttention(int(self.embedding_dim), 1, dropout_prob, batch_first=True)
 
         #feed-forward network
-        #self.ln2 = nn.LayerNorm(self.hidden_dim)
-        #self.h1 = nn.Linear(int(self.hidden_dim / num_channels), int(self.hidden_dim / num_channels))
-        self.h1 = linear_with_channels(int(self.hidden_dim/num_channels), int(self.hidden_dim/num_channels), num_channels)
-        self.activation = activation_function(int(self.hidden_dim/num_channels))
-        #self.addnorm2 = block_addnorm(self.hidden_dim, dropout_prob)
+        self.h1 = linear_with_channels(int(self.embedding_dim/split_dim), int(self.embedding_dim/split_dim), split_dim)
+        self.activation = activation_function(int(self.embedding_dim/split_dim))
+        #self.addnorm2 = block_addnorm(self.embedding_dim, dropout_prob)
 
-    def forward(self, X):
+    def _check_inputs(self, embedding_dim, split_dim):
+        """Checks the input block parameters are valid"""
+        if embedding_dim <= 0 or split_dim <= 0:
+            raise ValueError(f"All block structure parameters must be >= 0, but got embedding_dim={embedding_dim} and split_dim={split_dim}")
+        if embedding_dim % split_dim != 0:
+            raise ValueError(f"Embedding dim must be divisible by split_dim, but got a remainder of {embedding_dim % split_dim}")
+
+    def forward(self, X:torch.Tensor):
+        """Passes through the transformer block
+
+        Args:
+            X (torch.Tensor): Input to the block. Should have shape (batch_size, embedding_dim)
+
+        Returns:
+            X (torch.Tensor): Output of the block. Has shape (batch_size, embedding_dim)
+        """
         X = torch.unsqueeze(X, 1)
         X = X + self.attention(X, X, X)[0]
         X = X.reshape(-1, X.shape[2])
 
-        Y = X.reshape(-1, self.num_channels, int(self.hidden_dim / self.num_channels))
+        Y = X.reshape(-1, self.split_dim, int(self.embedding_dim / self.split_dim))
         Y = self.activation(self.h1(Y))
-        X = X + Y.reshape(-1, self.hidden_dim)
+        X = X + Y.reshape(-1, self.embedding_dim)
         return X
 
 class activation_function(nn.Module):
-    def __init__(self, d):
+    """Custom nonlinear activation function"""
+
+    def __init__(self, d:int):
+        """Initializes a custom nonlinear activation function with equation,
+        h(x) = [y + (1 + exp{-b * x}))^-1 * (1 - y)] * x, where y and b are trainable
+        parameters.
+
+        Args:
+            d (int): dimension of the input to the function.
+        """
         super().__init__()
 
         self.dim = d
         self.gamma = nn.Parameter(torch.zeros(d))
         self.beta = nn.Parameter(torch.zeros(d))
 
-    def forward(self, X):
-        inv = torch.special.expit(torch.mul(self.beta, X))
+    def forward(self, X:torch.Tensor):
+        """Passes through the activation function
 
+        Args:
+            X (torch.Tensor): Input to the function. Should be shape (batch_size, d)
+
+        Returns:
+           X (torch.Tensor): Output of the function. Has shape (batch_size, d)
+        """
+        inv = torch.special.expit(torch.mul(self.beta, X))
         return torch.mul(self.gamma + torch.mul(inv, 1-self.gamma), X)

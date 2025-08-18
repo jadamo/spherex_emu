@@ -3,22 +3,17 @@
 
 import time, math, yaml, sys
 import numpy as np
+from mpi4py import MPI
 
-from multiprocessing import Pool
-from itertools import repeat
+from scipy.integrate import romb
+from scipy.special import lpmv
 
-import ps_theory_calculator
+import ps_theory_calculator_camb as ps_theory_calculator
 from spherex_emu.utils import *
 
 #-------------------------------------------------------------------
 # GLOBAL VARIABLES
 #-------------------------------------------------------------------
-
-N = 2000000
-try:
-    N_PROC=int(os.environ["SLURM_CPUS_ON_NODE"])
-except:
-    N_PROC=14
 
 # ells to generate
 # TODO: Move this to a better spot
@@ -32,6 +27,17 @@ test_frac  = 0.1
 #-------------------------------------------------------------------
 # FUNCTIONS
 #-------------------------------------------------------------------
+
+def is_fiducial_cosmology_in_hyperspere(cosmo_dict, param_ranges):
+    cosmo_fid = []
+    for param in cosmo_dict["cosmo_params"].keys():
+        if "prior" in cosmo_dict["cosmo_params"][param]:
+            cosmo_fid.append(cosmo_dict["cosmo_params"][param]["value"])
+    for param in cosmo_dict["nuisance_params"].keys():
+        if "prior" in cosmo_dict["nuisance_params"][param]:
+            cosmo_fid.append(cosmo_dict["nuisance_params"][param]["value"])
+
+    return is_in_hypersphere(param_ranges, np.array(cosmo_fid))
 
 def prepare_header_info(param_names, fiducial_cosmology, n_samples):
 
@@ -50,41 +56,59 @@ def prepare_header_info(param_names, fiducial_cosmology, n_samples):
     header_info["nuisance_params"] = bias_params
     return header_info
 
-def get_power_spectrum(sample, k, param_names, cosmo_dict, ps_config):
+def get_power_spectrum(samples, k, param_names, cosmo_dict, ps_config, theory):
 
     num_tracers = ps_config['number_density_table'].shape[0]
+    num_spectra = num_tracers + math.comb(num_tracers, 2)
     num_zbins = len(ps_config["redshift_list"])
-    sample_dict = dict(zip(param_names, sample))
 
-    param_vector = prepare_ps_inputs(sample_dict, cosmo_dict, num_tracers, num_zbins)
-    try:
-        theory = ps_theory_calculator.PowerSpectrumMultipole1Loop(ps_config)
-        galaxy_ps = theory(k, ells, param_vector) / cosmo_dict["cosmo_params"]["h"]["value"]**3
-        galaxy_ps = np.transpose(galaxy_ps, (1, 0, 3, 2))
+    num_to_calculate = len(samples)
+    galaxy_ps = np.zeros((num_to_calculate, num_spectra, num_zbins, len(k), len(ells)))
 
-        if not np.any(np.isnan(galaxy_ps)) and \
-           not np.any(np.isinf(galaxy_ps)): 
-            return galaxy_ps, 0
-        else: 
+    k_lin = np.geomspace(np.min(k)*0.9, np.max(k)*1.1, 256)
+    nw_ps = np.zeros((num_to_calculate, len(k_lin)))
+    result = np.zeros(num_to_calculate)
+
+    for idx in range(num_to_calculate):
+        sample_dict = dict(zip(param_names, samples[idx]))
+        param_vector = prepare_ps_inputs(sample_dict, cosmo_dict, num_tracers, num_zbins)
+        try:
+            ps = theory(k, ells, param_vector) / cosmo_dict["cosmo_params"]["h"]["value"]**3
+            ps = np.transpose(ps, (1, 0, 3, 2))
+            pk_nw = theory._model.irres.get_pk_nw(k_lin)
+            if not np.any(np.isnan(ps)) and \
+                not np.any(np.isinf(ps)) and \
+                not np.any(np.isnan(pk_nw)) and \
+                not np.any(np.isinf(pk_nw)): 
+                galaxy_ps[idx] = ps
+                nw_ps[idx] = pk_nw
+            else: 
+                print("NaN or inf fouund in power spectrum!")
+                result[idx] = -1
+        except:
             print("Power spectrum calculation failed!")
-            return np.zeros_like(galaxy_ps), -1
-    except:
-        print("Power spectrum calculation failed!")
-        return np.zeros_like(galaxy_ps), -1
+            result[idx] = -1
 
+    return galaxy_ps, nw_ps, result
 #-------------------------------------------------------------------
 # MAIN
 #-------------------------------------------------------------------
 def main():
 
-    if len(sys.argv) < 5:
-        print("USAGE: python make_training_set_eft.py <cosmo_config_file> <survey_config_file> <save_dir> <k array file>")
-        return 0
+    comm = MPI.COMM_WORLD
+    size = MPI.COMM_WORLD.Get_size()
+    rank = MPI.COMM_WORLD.Get_rank()
+
+    if len(sys.argv) < 7:
+        if rank == 0: print("USAGE: python make_training_set_eft.py <cosmo_config_file> <survey_config_file> <save_dir> <k array file> <N> <mode>")
+        return -1
 
     cosmo_config_file  = sys.argv[1]
     survey_config_file = sys.argv[2]
     save_dir           = sys.argv[3]
     k_array_file       = sys.argv[4]
+    N                  = int(sys.argv[5])
+    mode               = sys.argv[6]
 
     if not os.path.exists(save_dir):
         print("Attempting to create save directory...")
@@ -109,59 +133,89 @@ def main():
     ps_config['Omega_m_ref'] = 0.3 # Omega_m value of the reference cosmology (assuming a flat LambdaCDM)
 
     param_names, param_ranges = get_parameter_ranges(cosmo_dict)
-    samples = make_latin_hypercube(param_ranges, N)
+    num_params = len(param_names)
 
-    print("Number of samples:", ps_config['number_density_table'].shape[0])
-    print("Number of redshift bins:", len(ps_config["redshift_list"]))
-    print("Number of varied parameters:", len(param_names),':', param_names)
-    print("Saving to", save_dir)
+    # Split up samples to multiple MPI ranks
+    if rank == 0: 
+        if   mode == "hypercube":   
+            all_samples = make_latin_hypercube(param_ranges, N)
+        elif mode == "hypersphere": 
+            all_samples = make_hypersphere(param_ranges, num_params, N)
+            is_valid_cosmo, r = is_fiducial_cosmology_in_hyperspere(cosmo_dict, param_ranges)
+            if not is_valid_cosmo:
+                raise ValueError(f"Fiducial cosmology is outside of hypersphere! r = {r}")
+            else:
+                print("Verified fiducial cosmology lies within hypersphere")
+    else:         
+        all_samples = np.zeros((N, num_params))
+    comm.Barrier()
+    comm.Bcast(all_samples, root=0)
 
+    assert N % size == 0
+    offset = int((N / size) * rank)
+    data_len = int(N / size)
+    rank_samples = all_samples[offset:offset+data_len,:]
+    assert rank_samples.shape[0] == data_len
 
-    # first, generate the power spectrum at the fiducial cosmology
-    print("Generating fiducial power spectrum...")
-    pk, result = get_power_spectrum({}, k, param_names, cosmo_dict, ps_config)
-    if result == 0:
-        np.save(save_dir+"ps_fid.npy", pk)
-        np.savez(save_dir+"kbins.npz", k=k)
-    else:
-        print("ERROR! failed to calculate fiducial power spectrum! Exiting...")
-        return -1
+    theory = ps_theory_calculator.PowerSpectrumMultipole1Loop(ps_config)
 
-    # # initialize pool for multiprocessing
+    if rank == 0:
+        print("Number of samples:", ps_config['number_density_table'].shape[0])
+        print("Number of redshift bins:", len(ps_config["redshift_list"]))
+        print("Number of varied parameters:", len(param_names),':', param_names)
+        print("samping mode:", mode)
+        print("Saving to", save_dir)
+
+        # first, generate the power spectrum at the fiducial cosmology
+        print("Generating fiducial power spectrum...")
+        galaxy_ps, nw_ps, result = get_power_spectrum([{}], k, param_names, cosmo_dict, ps_config, theory)
+        if result == 0:
+            np.save(save_dir+"ps_fid.npy", galaxy_ps)
+            np.save(save_dir+"nw_ps_fid.npy", nw_ps)
+            np.savez(save_dir+"kbins.npz", k=k)
+        else:
+            print("ERROR! failed to calculate fiducial power spectrum! Exiting...")
+            return -1
+
     t1 = time.time()
-    print("Generating", str(N), "power spectra with", str(N_PROC), "processors...")
-    p = Pool(processes=N_PROC)
-    pk, result = zip(*p.starmap(get_power_spectrum, 
-                      zip(samples, repeat(k), repeat(param_names), repeat(cosmo_dict), repeat(ps_config))))
-    p.close()
-    p.join()
+    if rank == 0: print("Generating", str(int(N)), "power spectra across", str(size), "processors ("+str(int(N / size))+" per processor)...")
+
+    galaxy_ps, nw_ps, result = get_power_spectrum(rank_samples, k, param_names, cosmo_dict, ps_config, theory)
 
     # aggregate data
-    pk = np.array(pk)
+    galaxy_ps = np.array(galaxy_ps)
+    nw_ps = np.array(nw_ps)
     result = np.array(result)
 
     idx_pass = np.where(result == 0)[0]
     fail_compute = len(np.where(result == -1)[0])
 
-    pk = pk[idx_pass]
-    samples = samples[idx_pass]
+    galaxy_ps = galaxy_ps[idx_pass]
+    nw_ps = nw_ps[idx_pass]
+    rank_samples = rank_samples[idx_pass]
 
     dataset_info = prepare_header_info(param_names, cosmo_dict, N - fail_compute)
 
-    if pk.shape[0] > 1:
-        np.savez(save_dir+"pk-raw.npz", params=samples, pk=pk)
+    if galaxy_ps.shape[0] > 1:
+        np.savez(save_dir+"pk-raw_"+str(rank)+"_.npz", params=rank_samples, galaxy_ps=galaxy_ps, nw_ps=nw_ps)
+    
+    if rank == 0:
         with open(save_dir+'info.yaml', 'w') as outfile:
             yaml.dump(dataset_info, outfile, sort_keys=False, default_flow_style=False)
 
-    del pk
+    del galaxy_ps
+    del nw_ps
 
     t2 = time.time()
-    print("Done! Took {:0.0f} hours {:0.0f} minutes".format(math.floor((t2 - t1)/3600), math.floor((t2 - t1)/60%60)))
-    print("Made {:0.0f} / {:0.0f} galaxy power spectra".format(N - fail_compute, N))
-    print("{:0.0f} ({:0.2f}%) power spectra failed to compute".format(fail_compute, 100.*fail_compute / N))
+    print("Rank {:d} Done! Took {:0.0f} hours {:0.0f} minutes".format(rank, math.floor((t2 - t1)/3600), math.floor((t2 - t1)/60%60)))
+    print("Made {:0.0f} / {:0.0f} galaxy power spectra".format((N/size) - fail_compute, N/size))
+    #print("{:0.0f} ({:0.2f}%) power spectra failed to compute".format(fail_compute, 100.*fail_compute / (N/size)))
 
-    organize_training_set(save_dir, train_frac, valid_frac, test_frac,
-                          samples.shape[1], len(z_eff), num_spectra, len(ells), len(k), True)
+    comm.Barrier()
+    if rank == 0:
+        print("\nRe-organizing data to training / validation / test sets...")
+        organize_training_set(save_dir, train_frac, valid_frac, test_frac,
+                              rank_samples.shape[1], len(z_eff), num_spectra, len(ells), len(k), True)
 
 if __name__ == "__main__":
     main()

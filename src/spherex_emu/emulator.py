@@ -113,7 +113,7 @@ class pk_emulator():
             self.invcov_blocks = output_norm_data[3]
 
 
-    def load_data(self, key: str, data_frac = 1.0, return_dataloader=True, data_dir=""):
+    def load_data(self, key:str, data_frac = 1.0, return_dataloader=True, data_dir=""):
         """loads and returns the training / validation / test dataset into memory
         
         Args:
@@ -207,8 +207,11 @@ class pk_emulator():
         """Returns a dictionary of input parameters needed by the emulator. Used within Cosmo_Inference"""
         return self.required_emu_params
 
+
     def get_required_analytic_parameters(self):
+        # TODO: find a better way to do this
         return ["counterterm_0", "counterterm_2", "counterterm_fog", "P_shot"]
+
 
     def check_kbins(self, test_kbins):
         raise NotImplementedError
@@ -262,14 +265,16 @@ class pk_emulator():
         except IOError:
             input_normalizations = torch.vstack((torch.zeros((self.num_cosmo_params + (self.num_tracers*self.num_zbins*self.num_nuisance_params))),
                                                  torch.ones((self.num_cosmo_params + (self.num_tracers*self.num_zbins*self.num_nuisance_params))))).to(self.device)
-        
+            param_names, param_bounds = [], np.empty((self.num_cosmo_params + (self.num_tracers*self.num_zbins*self.num_nuisance_params), 2))
+
         lower_bounds = self.galaxy_ps_model.organize_parameters(input_normalizations[0].unsqueeze(0))
         upper_bounds = self.galaxy_ps_model.organize_parameters(input_normalizations[1].unsqueeze(0))
         self.input_normalizations = torch.vstack([lower_bounds, upper_bounds])
         self.required_emu_params = param_names
 
     def _init_pca(self, data:pk_galaxy_dataset):
-        
+        """Transforms the given dataset to its corresponding princpiple components"""
+
         X = data.galaxy_ps.flatten(start_dim=1).to(torch.float64)
         std = torch.std(X, axis=0)
 
@@ -279,6 +284,7 @@ class pk_emulator():
 
         self.principle_components = V.T[:self.num_pcs].real.to(torch.float32)
         self.training_set_variance = std.to(torch.float32)
+
 
     def _init_fiducial_power_spectrum(self):
         """Loads the fiducial galaxy and non-wiggle power spectrum for use in normalization"""
@@ -301,6 +307,7 @@ class pk_emulator():
             self.ps_nw_fid = torch.from_numpy(np.load(ps_file)).to(torch.float32).to(self.device)[0]
         else:
             self.ps_nw_fid = torch.zeros(self.config_dict["ps_nw_emulator"]["num_kbins"])
+
 
     def _init_inverse_covariance(self):
         """Loads the inverse data covariance matrix for use in certain loss functions and normalizations"""
@@ -383,7 +390,8 @@ class pk_emulator():
 
 
     def _init_training_stats(self):
-        # store training data as nested lists with dims [nps, nz]
+        """initializes training data as nested lists with dims [nps, nz]"""
+
         self.train_loss = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
         self.valid_loss = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
         
@@ -459,7 +467,7 @@ class pk_emulator():
         if hasattr(self, "k_emu"):
             np.savez(os.path.join(save_dir, "kbins.npz"), k=self.k_emu)
         else:
-            self.logger.warn("kbins not initialized!")
+            self.logger.warning("kbins not initialized!")
 
         # data related to input normalization
         input_files = [self.input_normalizations, self.required_emu_params]
@@ -526,8 +534,16 @@ class pk_emulator():
 # --------------------------------------------------------------------------
 # extra helper function (TODO: Find a better place for this)
 # --------------------------------------------------------------------------
-def compile_multiple_device_training_results(save_dir, config_dir, num_gpus):
-    """takes networks saved on seperate ranks and combines them to the same format as when training on one device"""
+def compile_multiple_device_training_results(save_dir:str, config_dir:str, num_gpus:int):
+    """takes networks saved on seperate ranks and combines them to the same format as when training on one device
+    
+    Args:
+        save_dir (string): base save directory, where each rank was saved in its own sub-directory
+        config_dir (string): path+name of the original network config file
+        num_gpus (int): number of gpus to compile results of
+    Returns:
+        full_emulator (pk_emulator): emulator object with all training data combined together.
+    """
 
     full_emulator = pk_emulator(config_dir, "train")
     full_emulator.galaxy_ps_model.eval()

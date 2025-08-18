@@ -1,6 +1,5 @@
 import yaml, os
 from scipy.stats import qmc, norm
-from scipy.special import hyp2f1
 from torch.nn import functional as F
 import numpy as np
 import itertools
@@ -12,19 +11,27 @@ def load_config_file(config_file:str):
     
     Args:
         config_file: Config file path and name to laod
+    Raises:
+        IOError: If config_file could not be read in
     """
     with open(config_file, "r") as file:
         try:
             config_dict = yaml.load(file, Loader=yaml.FullLoader)
         except:
-            print("ERROR! Couldn't read yaml file")
-            return None
+            raise IOError(f"Could not load config yaml file at {config_file}")
     
     return config_dict
 
 
-def get_parameter_ranges(cosmo_dict):
-    """Returns cosmology and bias parameter priors based on the input cosmo_dict"""
+def get_parameter_ranges(cosmo_dict:dict):
+    """Returns cosmology and bias parameter priors based on the input cosmo_dict
+    
+    Args:
+        cosmo_dict (dict): dictionary of cosmology + nuisance parameter values and ranges
+    Returns:
+        params (list): name of parameters that are varied in the input cosmo_dict
+        priors (np.array): min and max bounds of parameters varied in cosmo_dict. Has shape [len(param_names), 2]  
+    """
 
     cosmo_params = {}
     for param in cosmo_dict["cosmo_params"]:
@@ -50,7 +57,17 @@ def get_parameter_ranges(cosmo_dict):
     params = list(params_dict.keys())
     return params, priors
 
-def get_gaussan_priors(cosmo_dict):
+
+def get_gaussan_priors(cosmo_dict:dict):
+    """interprets the input cosmo_dict and outputs a list of scipy.stats.norm objects for use by Nautilus 
+
+    Args:
+        cosmo_dict (dict): dictionary of cosmology + nuisance parameter values and ranges
+
+    Returns:
+        priors (list): list of scipy.stats.norm objects corresponding to the Gaussian priors of prior_names
+        prior_names (list): names of the corresponding priors in priors
+    """
     priors, prior_names = [], []
     for param in cosmo_dict["cosmo_params"]:
         if "prior" in cosmo_dict["cosmo_params"][param]:
@@ -66,8 +83,18 @@ def get_gaussan_priors(cosmo_dict):
 
     return priors, prior_names
 
-def prepare_ps_inputs(sample, cosmo_dict, num_tracers, num_zbins):
-    """takes a set of parameters and oragnizes them to the format expected by ps_1loop"""
+
+def prepare_ps_inputs(sample:dict, cosmo_dict:dict, num_tracers:int, num_zbins:int):
+    """takes a set of parameters and oragnizes them to the format expected by ps_theory_calculator
+    
+    Args:
+        sample (dict): dictionary of (param_name, param_value)
+        cosmo_dict (dict) dictionary of cosmology + nuisance parameter values and ranges
+        num_tracers (int): number of correlated tracers to calculate
+        num_zbins (int): number of independent redshift bins to calculate
+    Returns:
+        param_vector (np.array): 1D list of parameters that can be directly passed to ps_theory_calculator
+    """
     param_vector = []
     # fill in cosmo params in the order ps_1loop expects
     for pname in list(cosmo_dict["cosmo_param_names"]):
@@ -117,8 +144,17 @@ def make_latin_hypercube(priors, N):
     
     return params
 
-def make_hypersphere(priors, dim, N):
-    """Generates a hypersphere of N samples using the method from https://arxiv.org/abs/2405.01396v1"""
+
+def make_hypersphere(priors:np.array, dim:int, N:int):
+    """Generates a hypersphere of N samples using the method from https://arxiv.org/abs/2405.01396v1
+    
+    Args:
+        priors: (np.array): array of parameter minima and maxima. Should have shape (dim, 2)
+        dim (int): number of parameters to generate a hypersphere with
+        N (int): number of samples to uniformly generate within the hypersphere
+    Returns:
+        sphere_points (np.array): list of parameters uniformly sampled within a hypersphere. Has shape (N, dim)
+    """
 
     # generate points in a uniform hypersphere with radius 1
     sphere_points = np.random.multivariate_normal(np.zeros(dim), np.eye(dim), size=N)
@@ -132,6 +168,7 @@ def make_hypersphere(priors, dim, N):
         sphere_points[:,d] = ((sphere_points[:,d] + 1) * (priors[d, 1] - priors[d, 0]) / 2.) + priors[d,0]
     return sphere_points
 
+
 def is_in_hypersphere(priors, params):
     """Returns whether or not the given params are within a hypersphere with edges defined by bounds"""
 
@@ -142,6 +179,7 @@ def is_in_hypersphere(priors, params):
     r = np.sqrt(np.sum(unit_params**2))
     if r >= 1: return False, r
     else:      return True, r
+
 
 def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, test_frac:float, 
                           param_dim, num_zbins, num_spectra, num_ells, k_dim, remove_old_files=True):
@@ -212,16 +250,35 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
                 nw_ps=all_nw_ps[valid_end:test_end]) 
 
 
-def get_full_invcov(cov, num_zbins):
+def get_full_invcov(cov:torch.Tensor, num_zbins:int):
+    """Calculates the full (multi-tracer) inverse covariance matrix given
 
+    Args:
+        cov (torch.Tensor): set of covariance matrices. Should have shape (num_zbins, X, X)
+        num_zbins (int): number of redshift-bins. 
+
+    Returns:
+        invcov (torch.Tensor): Inverse covariance matrices. Has shape (num_zbins, X, X)
+    """
     invcov = torch.zeros_like(cov)
     for z in range(num_zbins):
         invcov[z] = torch.linalg.inv(cov[z])
     return invcov
 
 
-def get_invcov_blocks(cov, num_spectra, num_zbins, num_kbins, num_ells):
+def get_invcov_blocks(cov:torch.Tensor, num_spectra:int, num_zbins:int, num_kbins:int, num_ells:int):
+    """Calculates block inverse covariance matrices given a full multi-tracer covariance matrix.
 
+    Args:
+        cov (torch.Tensor): full block covariance matrix. Should have shape (num_zbins, num_spectra*num_kbins*num_ells, num_spectra*num_kbins*num_ells)
+        num_spectra (int): number of (auto + cross) power spectra in the corresponding covariance matrix
+        num_zbins (int): number of redshift bins in the corresponding covariance matrix
+        num_kbins (int): number of k-mode bins in the corresponding covariance matrix
+        num_ells (int): number of multipole moments in the corresponding covariance matrix
+
+    Returns:
+        invcov_blocks (torch.Tensor): Set of inverse block covariance matrices. Has shape (num_spectra, num_zbins, num_ells*num_kbins, num_ells*num_kbins)
+    """
     invcov_blocks = torch.zeros((num_spectra, num_zbins, num_ells*num_kbins, num_ells*num_kbins)).to(torch.float64)
 
     for z in range(num_zbins):
@@ -238,21 +295,71 @@ def get_invcov_blocks(cov, num_spectra, num_zbins, num_kbins, num_ells):
     return invcov_blocks
 
 
-def mse_loss(predict, target, invcov=None, normalized=False):
+def mse_loss(predict:torch.Tensor, target:torch.Tensor, **args):
+    """Calculates the mean-squared-error loss of the inputs.
+
+    Args:
+        predict (torch.Tensor): output of the network
+        target (torch.Tensor): (batch of) elements in the training set. Should have the same shape as predict
+        **args: extra arguments (needed by interface of pk_emulator)
+
+    Returns:
+        mse_loss: mean-squared-error loss of the given inputs
+    """
     return F.mse_loss(predict, target, reduction="sum")
 
 
-def hyperbolic_loss(predict, target, invcov=None, normalized=False):
+def hyperbolic_loss(predict, target, **args):
+    """Calculates the hyperbolic loss of the inputs given by
+    <sqrt(1 + 2(predict - target)**2)> - 1
+
+    Args:
+        predict (torch.Tensor): output of the network
+        target (torch.Tensor): (batch of) elements in the training set. Should have the same shape as predict
+        **args: extra arguments (needed by interface of pk_emulator)
+
+    Returns:
+        hyperbolic_loss: hyperbolic loss of the given inputs
+    """
     return torch.mean(torch.sqrt(1 + 2*(predict - target)**2)) - 1
 
 
-def hyperbolic_chi2_loss(predict, target, invcov, normalized=False):
+def hyperbolic_chi2_loss(predict:torch.Tensor, target:torch.Tensor, invcov:torch.Tensor, normalized=False):
+    """Calculates the hyperbolic delta chi2 of the given inputs, which is given by the equation
+    L = <sqrt(1 + 2(delta_chi_squared)> - 1
+
+    Args:
+        predict (torch.Tensor): output of the network
+        target (torch.Tensor): (batch of) elements in the training set. Should have the same shape as predict
+        invcov (torch.Tensor): either a full or block inverse covariance matrix, depending on whether the input is normalizeed or not
+        normalized (bool, optional): whether or not the inputs are normalized. Defaults to False.
+
+    Returns:
+        hyperbolic_chi2 (torch.Tensor): mean hyperbolic chi2 of the given batch of inputs
+    """
     chi2 = delta_chi_squared(predict, target, invcov, normalized)
     return torch.mean(torch.sqrt(1 + 2*chi2)) - 1
 
 
-def delta_chi_squared(predict, target, invcov, normalized=False):
+def delta_chi_squared(predict:torch.Tensor, target:torch.Tensor, invcov:torch.Tensor, normalized=False):
+    """Calculates the delta chi squared of the given inputs, which is given by the equation,
+    delta_chi2 = (predict - target)^T * invcov * (predict - target).
+    
+    Depending on whether the inputs are normalized, this function expects different shapes and cauclates 
+    delta chi2 differenty. In either case however, the above equation applies.
 
+    Args:
+        predict (torch.Tensor): output of the emulator. Should have shape [b, 1, nl*nk] OR [nps, nz, nk, nl]
+        target (torch.Tensor): data from the training / validation / test set. Should have shape [b, 1, nl*nk] OR [nps, nz, nk, nl]
+        invcov (torch.Tensor): full inverse covariance matrix. Should have shape (z, nps*nl*nk, nps*nl*nk). Is only used if normalized == False
+        normalized (bool, optional): Whether or not predict and target are normalized. Defaults to False.
+
+    Raises:
+        ValueError: if predict and target have different or unexpected shapes
+
+    Returns:
+        chi2 (torch.Tensor): delta_chi2 of the batch of inputs
+    """
     if not isinstance(predict, torch.Tensor):
         predict = torch.from_numpy(predict).to(torch.float32).to(invcov.device)
     if not isinstance(target, torch.Tensor):
@@ -265,7 +372,6 @@ def delta_chi_squared(predict, target, invcov, normalized=False):
     # OR [nps, nz, nk, nl] (same as cosmo_inference)
     if predict.shape != target.shape:
         raise ValueError("ERROR! preidciton and target shape mismatch: "+ str(predict.shape) +", "+ str(target.shape))
-
     delta = predict - target
 
     chi2 = 0
@@ -280,17 +386,34 @@ def delta_chi_squared(predict, target, invcov, normalized=False):
                         torch.matmul(invcov[z], 
                         delta[:,z].flatten()))
         else:
-            raise ValueError("Expected input data with 2 or 5 dimensions, but got " + str(delta.dim()))
+            raise ValueError(f"Expected input data with 2 or 5 dimensions, but got {delta.dim()}")
     else:
-        assert len(delta.shape) == 2
-        chi2 = torch.bmm(delta.unsqueeze(1), delta.unsqueeze(2)).squeeze()
+        if delta.dim() == 1:
+            delta = delta.unsqueeze(0)
+            chi2 = torch.bmm(delta.unsqueeze(1), delta.unsqueeze(2)).squeeze()
+        elif delta.dim() == 2:
+            chi2 = torch.bmm(delta.unsqueeze(1), delta.unsqueeze(2)).squeeze()
+        else:
+            raise ValueError(f"Expected input data with 2 dimensions, but got {delta.dim()}")
 
     chi2 = torch.sum(chi2)
     return chi2
 
 
-def calc_avg_loss(emulator, data_loader, loss_function, bin_idx=None, mode="galaxy_ps"):
-    """run thru the given data set and returns the average loss value"""
+def calc_avg_loss(emulator, data_loader, loss_function:callable, bin_idx=None, mode="galaxy_ps"):
+    """run thru the given data set and returns the average loss value for a given sub-network, or all sub-networks in a list
+
+    Args:
+        emulator (pk_emulator): emulator object to calculate the average loss with
+        data_loader (dataLoader): Pytorch DataLoader object containing the data to loop over
+        loss_function (callable): loss function to use
+        bin_idx (list, optional): [ps, z] values to calculate the average loss for. If None, recuresively calls
+            this function with all possible values of ps and z. Defaults to None
+        mode (str, optional): which type of network to calculate the loss for (CURRENTLY HAS TO BE "galaxy_ps"!). Defaults to "galaxy_ps".
+
+    Returns:
+        total_loss (float or torch.Tensor): average loss corresponding to the net with bin_idx, or list of average loss for all sub-networks.
+    """
 
     # if net_idx not specified, recursively call the function with all possible values
     if bin_idx == None and mode == "galaxy_ps":
@@ -324,49 +447,64 @@ def calc_avg_loss(emulator, data_loader, loss_function, bin_idx=None, mode="gala
 
 
 def pca_transform(data, components, std):
+    """Performs a PCA transformation (NOTE: Unused function currently)"""
     return (data / std) @ components.T
 
 
 def pca_inverse_transform(reduced_data:torch.Tensor, components, std):
+    """Performs a reverse PCA transformation (NOTE: Unused function currently)"""
     if reduced_data.dim() == 2:
         reduced_data = reduced_data.unsqueeze(1)
 
     return (torch.matmul(reduced_data, components) * std).squeeze()
 
 
-def normalize_cosmo_params(params, normalizations):
+def normalize_cosmo_params(params:torch.Tensor, normalizations:torch.Tensor):
+    """Linearly normalizes input cosmology + bias parameters to lie within the range [0,1]
+
+    Args:
+        params (torch.Tensor): batch of input parameters to normalize. Should have shape [batch, num_spectra*num_zbins, num_cosmo_params + (num_nuisance_params)].
+        normalizations (torch.Tensor): Tensor of parameter minima and maxima. Should have shape [2, num_spectra*num_zbins, num_cosmo_params + (num_nuisance_params)
+
+    Returns:
+        norm_params (torch.Tensor): batch of normalized input parameters. has shape [batch, num_spectra*num_zbins, num_cosmo_params + (num_nuisance_params)
+    """
     return (params - normalizations[0]) / (normalizations[1] - normalizations[0])
 
 
-# TODO: Move these to dataset.py
-def normalize_power_spectrum(ps_raw, ps_fid, sqrt_eigvals, Q):
-
-    # assumes ps has shape [b, nps, z, nk*nl]
-    ps_new = torch.zeros_like(ps_raw)
-    for (ps, z) in itertools.product(range(ps_new.shape[1]), range(ps_new.shape[2])):
-        ps_new[:,ps, z] = ((ps_raw[:, ps, z] @ Q[ps, z]) - (ps_fid[ps, z].flatten() @ Q[ps, z])) * sqrt_eigvals[ps, z]
-    return ps_new
-
-
-def generate_PCs(ps_raw):
-
-    print(ps_raw.shape)
-    cov = torch.cov(ps_raw)
-
-
-def un_normalize_power_spectrum(ps_raw, ps_fid, sqrt_eigvals, Q, Q_inv):
-    """
-    Reverses normalization of a batch of output power spectru based on the method developed by arXiv:2402.17716.
+def normalize_power_spectrum(ps_raw:torch.Tensor, ps_fid:torch.Tensor, sqrt_eigvals:torch.Tensor, Q:torch.Tensor):
+    """Normalizes the given galaxy power spectrum multipoles using the method described in http://arxiv.org/abs/2403.12337
 
     Args:
-        ps: () power spectrum to reverse normalization. Expected shape is either [nb, nps, nz, nk*nl] or [nb, 1, nk*nl]  
-        ps_fid: fiducial power spectrum used to reverse normalization. Expected shape is [nps*nz, nk*nl]  
-        sqrt_eigvals: square root eigenvalues of the inverse covariance matrix. Expected shape is [nps*nz, nk*nl]  
-        Q: eigenvectors of the inverse covariance matrix. Expected shape is [nps*nz, nk*nl, nk*nl]  
-        Q_inv: inverse eigenvectors of the inverse covariance matrix. Expected shape is [nps*nz, nk*nl, nk*nl]  
-        net_idx: (optional) index specifying the specific sub-network output to reverse normalization. Default None. If not specified, will reverse normalization for the entire emulator output
+        ps_raw (torch.Tensor): batch of power spectra in units of (Mpc/h)^3 to normalize. Should have shape [b, nps, z, nk*nl]
+        ps_fid (torch.Tensor): fiducial power spectrum multipoles in units of (Mpc/h)^3 used for normalization. Should have shape [nps, z, nk*nl]
+        sqrt_eigvals (torch.Tensor): set of sqrt eigenvalues used for normalization. Should have shape [ps, z, nk*nl]
+        Q (torch.Tensor): set of eigenvectors used for normalization. Should have shape [ps, z, nk*nl, nk*nl]
+
     Returns:
-        ps_new: galaxy power spectrum multipoles in units of (Mpc/h)^3 in the same shape as ps
+        ps_norm: normalized power spectrum multipoles. Has shape [b, nps, z, nk*nl]
+    """
+    # assumes ps has shape [b, nps, z, nk*nl]
+    ps_norm = torch.zeros_like(ps_raw)
+    for (ps, z) in itertools.product(range(ps_norm.shape[1]), range(ps_norm.shape[2])):
+        ps_norm[:,ps, z] = ((ps_raw[:, ps, z] @ Q[ps, z]) - (ps_fid[ps, z].flatten() @ Q[ps, z])) * sqrt_eigvals[ps, z]
+    return ps_norm
+
+
+def un_normalize_power_spectrum(ps_raw:torch.Tensor, ps_fid:torch.Tensor, sqrt_eigvals:torch.Tensor, Q:torch.Tensor, Q_inv:torch.Tensor):
+    """Reverses normalization of a batch of output power spectru based on the method developed by http://arxiv.org/abs/2403.12337
+
+    Args:
+        ps (torch.Tensor): power spectrum to reverse normalization. Expected shape is either [nb, nps, nz, nk*nl] or [nb, 1, nk*nl]  
+        ps_fid (torch.Tensor): fiducial power spectrum used to reverse normalization. Expected shape is [nps*nz, nk*nl]  
+        sqrt_eigvals (torch.Tensor): square root eigenvalues of the inverse covariance matrix. Expected shape is [nps*nz, nk*nl]  
+        Q (torch.Tensor): eigenvectors of the inverse covariance matrix. Expected shape is [nps*nz, nk*nl, nk*nl]  
+        Q_inv (torch.Tensor): inverse eigenvectors of the inverse covariance matrix. Expected shape is [nps*nz, nk*nl, nk*nl]  
+        net_idx (torch.Tensor): (optional) index specifying the specific sub-network output to reverse normalization. Default None. If not specified, will reverse normalization for the entire emulator output
+    Returns:
+        ps_new (torch.Tensor): galaxy power spectrum multipoles in units of (Mpc/h)^3 in the same shape as ps
+    Raises:
+        IndexError: If the given shape of ps_raw is invalid.
     """
 
     ps_new = torch.zeros_like(ps_raw)
@@ -379,7 +517,6 @@ def un_normalize_power_spectrum(ps_raw, ps_fid, sqrt_eigvals, Q, Q_inv):
         for (ps, z) in itertools.product(range(ps_new.shape[0]), range(ps_new.shape[1])):
             ps_new[ps, z] = (ps_raw[ps, z] / sqrt_eigvals[ps, z] + (ps_fid[ps, z] @ Q[ps, z])) @ Q_inv[ps, z]
     else:
-        print("ERROR! Incorrect input shape for ps_raw!", ps_raw.shape)
-        raise IndexError
+        raise IndexError(f"Incorrect input shape for ps_raw ({ps_raw.shape})!")
 
     return ps_new
