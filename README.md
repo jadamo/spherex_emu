@@ -4,6 +4,8 @@
 
 This repository contains code to create a neural network emulator that outputs redshift-space galaxy power spectrum multipoles given a set of input cosmology + galaxy bias parameters. Said emulator is able to generate multipoles for multiple tracer and redhshift bins simultaniously, and is primarily meant for use in SPHEREx likelihood inference studies. 
 
+Check out our documentation on [ReadTheDocs](https://spherex-emu.readthedocs.io/en/latest/index.html)!
+
 ## Installing the code
 
 This package works on both Linux and MacOS (intel and arm64) platforms, and has so-far been tested using **Python 3.11**. There are two methods to install the code.
@@ -29,7 +31,7 @@ To run the provided unit-tests, you can run the following command in the base re
 
 ## Running the code
 
-TODO: Update this section
+Check out our [ReadTheDocs Page](https://spherex-emu.readthedocs.io/en/latest/workflow.html).
 
 ## Authors
 
