@@ -1,7 +1,7 @@
 .. _dataset:
 
-Galaxy Power Spectrum Dataset
-=============================
+Galaxy PSM Dataset
+==================
 
 This class organizes power spectrum multipoles into a format expected by PyTorch.
 

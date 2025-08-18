@@ -1,0 +1,10 @@
+.. _emulator:
+
+Emulator API
+============
+
+This page contains the main functions you need to interact with spherex_emu.
+Specifically, these functions create and use the galaxy power spectrum emulator.
+
+.. automodule:: emulator
+   :members:

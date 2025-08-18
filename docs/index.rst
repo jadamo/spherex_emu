@@ -6,9 +6,8 @@
 spherex_emu documentation
 =========================
 
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
+Welcome to the spherex_emu documentation! Here you can find instructions for
+how to install and use the code, as well as explore the package API.
 
 Lumache hosts its documentation on Read the Docs.
 
@@ -16,5 +15,6 @@ Lumache hosts its documentation on Read the Docs.
    :maxdepth: 2
    :caption: Contents:
 
-   emulator.rst
-   dataset.rst
+   install.rst
+   workflow.rst
+   api/index.rst
