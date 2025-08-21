@@ -4,15 +4,15 @@ import itertools
 import logging
 import os
 
-from spherex_emu.emulator import pk_emulator, compile_multiple_device_training_results
-from spherex_emu.utils import calc_avg_loss, mse_loss, normalize_cosmo_params, pca_inverse_transform
+from spherex_emu.emulator import ps_emulator, compile_multiple_device_training_results
+from spherex_emu.utils import calc_avg_loss, normalize_cosmo_params, pca_inverse_transform
 
 
-def train_galaxy_ps_one_epoch(emulator:pk_emulator, train_loader:torch.utils.data.DataLoader, bin_idx:list):
+def train_galaxy_ps_one_epoch(emulator:ps_emulator, train_loader:torch.utils.data.DataLoader, bin_idx:list):
     """Runs through one epoch of training for one sub-network in the galaxy_ps model
 
     Args:
-        emulator (pk_emulator): emulator object to train
+        emulator (ps_emulator): emulator object to train
         train_loader (torch.utils.data.DataLoader): training data to loop through
         bin_idx (list): bin index [ps, z] identifying the sub-network to train.
 
@@ -55,11 +55,11 @@ def train_galaxy_ps_one_epoch(emulator:pk_emulator, train_loader:torch.utils.dat
     return (total_loss / len(train_loader.dataset))
 
 
-def train_on_single_device(emulator:pk_emulator):
+def train_on_single_device(emulator:ps_emulator):
     """Trains the emulator on a single device (cpu or gpu)
 
     Args:
-        emulator (pk_emulator): network object to train.
+        emulator (ps_emulator): network object to train.
     """
 
     # load training / validation datasets
@@ -121,7 +121,7 @@ def train_on_multiple_devices(gpu_id:int, net_indeces:list, config_dir:str):
     # sub-networks based on net_indeces
     device = torch.device(f"cuda:{gpu_id}")
     logging.basicConfig(level=logging.DEBUG, format=f"[GPU {gpu_id}] %(message)s")
-    emulator = pk_emulator(config_dir, "train", device)
+    emulator = ps_emulator(config_dir, "train", device)
 
     base_save_dir = os.path.join(emulator.input_dir, emulator.save_dir)
     emulator.save_dir += "rank_"+str(gpu_id)+"/"

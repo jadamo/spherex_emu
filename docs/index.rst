@@ -18,3 +18,4 @@ Lumache hosts its documentation on Read the Docs.
    install.rst
    workflow.rst
    api/index.rst
+   examples/test_emulator.ipynb

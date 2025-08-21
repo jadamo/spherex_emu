@@ -9,7 +9,6 @@ import logging
 from spherex_emu.models import blocks
 from spherex_emu.models.stacked_mlp import stacked_mlp
 from spherex_emu.models.stacked_transformer import stacked_transformer
-from spherex_emu.models.single_transformer import single_transformer
 from spherex_emu.models.analytic_terms import analytic_eft_model
 from spherex_emu.dataset import pk_galaxy_dataset
 from spherex_emu.utils import load_config_file, get_parameter_ranges,\
@@ -17,18 +16,20 @@ from spherex_emu.utils import load_config_file, get_parameter_ranges,\
                               delta_chi_squared, mse_loss, hyperbolic_loss, hyperbolic_chi2_loss, \
                               get_invcov_blocks, get_full_invcov, pca_inverse_transform
 
-class pk_emulator():
+class ps_emulator():
     """Class defining the neural network emulator."""
 
 
-    def __init__(self, net_dir:str, mode:str="train", device=None):
-        """Emulator constructor, initializes the network structure and all supporting data
+    def __init__(self, net_dir:str, mode:str="train", device:torch.device=None):
+        """Emulator constructor, initializes the network structure and all supporting data.
 
         Args:
-            net_dir: string specifying either the directory or full filepath of the trained emulator to load from.
+            net_dir (str): path specifying either the directory or full filepath of the trained emulator to load from.
             if a directory, assumes the config file is called "config.yaml"
-            mode: whether the emulator should initialize for training, or to load from a previous training run. One 
+            mode (str): whether the emulator should initialize for training, or to load from a previous training run. One 
             of either ["train", "eval"]. Detailt "train"
+            device (torch.device): Device to load the emulator on. If None, will attempt to load on any available
+            GPU (or mps for macos) device. Default None.
 
         Raises:
             KeyError: if mode is not correctly specified
@@ -40,7 +41,7 @@ class pk_emulator():
         # HACK: force normalization_type variable to be defined for older models
         self.normalization_type = "normal"
 
-        self.logger = logging.getLogger('pk_emulator')
+        self.logger = logging.getLogger('ps_emulator')
 
         # load dictionary entries into their own class variables
         for key in self.config_dict:
@@ -529,10 +530,10 @@ def compile_multiple_device_training_results(save_dir:str, config_dir:str, num_g
         config_dir (string): path+name of the original network config file
         num_gpus (int): number of gpus to compile results of
     Returns:
-        full_emulator (pk_emulator): emulator object with all training data combined together.
+        full_emulator (ps_emulator): emulator object with all training data combined together.
     """
 
-    full_emulator = pk_emulator(config_dir, "train")
+    full_emulator = ps_emulator(config_dir, "train")
     full_emulator.galaxy_ps_model.eval()
 
     net_idx = torch.Tensor(list(itertools.product(range(full_emulator.num_spectra), range(full_emulator.num_zbins)))).to(int)
@@ -543,7 +544,7 @@ def compile_multiple_device_training_results(save_dir:str, config_dir:str, num_g
     full_emulator.train_time = 0.
     for n in range(num_gpus):
         sub_dir = "rank_"+str(n)
-        seperate_network = pk_emulator(os.path.join(save_dir,sub_dir), "eval")
+        seperate_network = ps_emulator(os.path.join(save_dir,sub_dir), "eval")
 
         # non-wiggle power spectrum network + kbins
         if n == 0:

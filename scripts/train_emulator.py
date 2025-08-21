@@ -1,4 +1,4 @@
-from spherex_emu.emulator import pk_emulator, compile_multiple_device_training_results
+from spherex_emu.emulator import ps_emulator, compile_multiple_device_training_results
 import time, sys
 import torch
 import torch.multiprocessing as mp
@@ -17,7 +17,7 @@ def main():
     logger = logging.getLogger("train_emulator")
 
     t1 = time.time()
-    emulator = pk_emulator(sys.argv[1], "train")
+    emulator = ps_emulator(sys.argv[1], "train")
 
     # train on a single cpu / gpu
     if emulator.num_gpus < 2:

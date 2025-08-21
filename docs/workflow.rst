@@ -9,11 +9,12 @@ Generating a Training Set
 -------------------------
 
 This stage is where you decide what power spectrum model you want to emulate, and the corresponding
-parameter ranges it will be valid in. Assuming you have access to `ps_1loop`, we have provided a script in 
+parameter ranges it will be valid in. Assuming you have access to ``ps_1loop``, we have provided a script in 
 ``scripts/make_training_set_eft.py`` that will attempt to create a training set in the right format for you.
 
 If you are creating your own training set, the following are the required ingredients and format you should use:
 
+* Cosmology and survey parameters config files. We provide some example files in the ``configs`` directory.
 * Your data should be stored in `pk-training.npz`, `pk-validation.npz`, and `pk-testing.npz` files, each of which have:
     * a params array with shape ``[N, num_params]``.
     * a galaxy power spectrum array with shape ``[N, num_auto_plus_cross_spectra, num_redshift_bins, num_kbins, num_ells]``.
@@ -118,6 +119,8 @@ This will repeat until either the validation loss for all sub-nets hasn't improv
 
 Testing the Emulator
 --------------------
+
+We provide an example jupyter notebook for running various tests on your emulator :doc:`here <examples/test_emulator>`.
 
 Using the Emulator
 -------------------

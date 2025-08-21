@@ -295,7 +295,7 @@ def mse_loss(predict:torch.Tensor, target:torch.Tensor, **args):
     Args:
         predict (torch.Tensor): output of the network
         target (torch.Tensor): (batch of) elements in the training set. Should have the same shape as predict
-        **args: extra arguments (needed by interface of pk_emulator)
+        **args: extra arguments (needed by interface of ps_emulator)
 
     Returns:
         mse_loss: mean-squared-error loss of the given inputs
@@ -310,7 +310,7 @@ def hyperbolic_loss(predict, target, **args):
     Args:
         predict (torch.Tensor): output of the network
         target (torch.Tensor): (batch of) elements in the training set. Should have the same shape as predict
-        **args: extra arguments (needed by interface of pk_emulator)
+        **args: extra arguments (needed by interface of ps_emulator)
 
     Returns:
         hyperbolic_loss: hyperbolic loss of the given inputs
@@ -398,7 +398,7 @@ def calc_avg_loss(emulator, data_loader, loss_function:callable, bin_idx=None, m
     """run thru the given data set and returns the average loss value for a given sub-network, or all sub-networks in a list
 
     Args:
-        emulator (pk_emulator): emulator object to calculate the average loss with
+        emulator (ps_emulator): emulator object to calculate the average loss with
         data_loader (dataLoader): Pytorch DataLoader object containing the data to loop over
         loss_function (callable): loss function to use
         bin_idx (list, optional): [ps, z] values to calculate the average loss for. If None, recuresively calls
