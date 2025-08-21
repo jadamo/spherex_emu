@@ -199,7 +199,6 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
 
     all_params = np.array([], dtype=np.int64).reshape(0,param_dim)
     all_galaxy_ps = np.array([], dtype=np.int64).reshape(0, num_spectra, num_zbins, k_dim, num_ells)
-    all_nw_ps = np.array([], dtype=np.int64).reshape(0, 256)
 
     # load in all the data internally (NOTE: memory intensive!)
     # if "pk-raw.npz" in all_filenames:
@@ -212,11 +211,9 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
             F = np.load(training_dir+file)
             params = F["params"]
             galaxy_ps = F["galaxy_ps"]
-            nw_ps = F["nw_ps"]
             del F
             all_params = np.vstack([all_params, params])
             all_galaxy_ps = np.vstack([all_galaxy_ps, galaxy_ps])
-            all_nw_ps = np.vstack([all_nw_ps, nw_ps])
 
     N = all_params.shape[0]
     N_train = int(N * train_frac)
@@ -238,16 +235,13 @@ def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, 
 
     np.savez(training_dir+"pk-training.npz", 
                 params=all_params[0:N_train],
-                galaxy_ps=all_galaxy_ps[0:N_train],
-                nw_ps=all_nw_ps[0:N_train])
+                galaxy_ps=all_galaxy_ps[0:N_train])
     np.savez(training_dir+"pk-validation.npz", 
                 params=all_params[valid_start:valid_end], 
-                galaxy_ps=all_galaxy_ps[valid_start:valid_end],
-                nw_ps=all_nw_ps[valid_start:valid_end])
+                galaxy_ps=all_galaxy_ps[valid_start:valid_end])
     np.savez(training_dir+"pk-testing.npz", 
                 params=all_params[valid_end:test_end], 
-                galaxy_ps=all_galaxy_ps[valid_end:test_end],
-                nw_ps=all_nw_ps[valid_end:test_end]) 
+                galaxy_ps=all_galaxy_ps[valid_end:test_end]) 
 
 
 def get_full_invcov(cov:torch.Tensor, num_zbins:int):
@@ -301,7 +295,7 @@ def mse_loss(predict:torch.Tensor, target:torch.Tensor, **args):
     Args:
         predict (torch.Tensor): output of the network
         target (torch.Tensor): (batch of) elements in the training set. Should have the same shape as predict
-        **args: extra arguments (needed by interface of pk_emulator)
+        **args: extra arguments (needed by interface of ps_emulator)
 
     Returns:
         mse_loss: mean-squared-error loss of the given inputs
@@ -316,7 +310,7 @@ def hyperbolic_loss(predict, target, **args):
     Args:
         predict (torch.Tensor): output of the network
         target (torch.Tensor): (batch of) elements in the training set. Should have the same shape as predict
-        **args: extra arguments (needed by interface of pk_emulator)
+        **args: extra arguments (needed by interface of ps_emulator)
 
     Returns:
         hyperbolic_loss: hyperbolic loss of the given inputs
@@ -404,7 +398,7 @@ def calc_avg_loss(emulator, data_loader, loss_function:callable, bin_idx=None, m
     """run thru the given data set and returns the average loss value for a given sub-network, or all sub-networks in a list
 
     Args:
-        emulator (pk_emulator): emulator object to calculate the average loss with
+        emulator (ps_emulator): emulator object to calculate the average loss with
         data_loader (dataLoader): Pytorch DataLoader object containing the data to loop over
         loss_function (callable): loss function to use
         bin_idx (list, optional): [ps, z] values to calculate the average loss for. If None, recuresively calls
@@ -431,11 +425,8 @@ def calc_avg_loss(emulator, data_loader, loss_function:callable, bin_idx=None, m
                 params = normalize_cosmo_params(params, emulator.input_normalizations)
                 prediction = emulator.galaxy_ps_model.forward(params, (bin_idx[1] * emulator.num_spectra) + bin_idx[0])
                 target = torch.flatten(batch[1][:,bin_idx[0],bin_idx[1]], start_dim=1)
-            elif mode == "nw_ps":
-                params = batch[0][:,:emulator.nw_ps_model.input_dim]
-                params = normalize_cosmo_params(params, emulator.input_normalizations[:,0,:emulator.input_dim])
-                prediction = emulator.nw_ps_model.forward(params)
-                target = batch[2]
+            else:
+                raise KeyError(f"Invalid value for mode ({mode})")
 
             if emulator.normalization_type == "pca":
                 prediction = pca_inverse_transform(prediction, emulator.principle_components, emulator.training_set_variance)

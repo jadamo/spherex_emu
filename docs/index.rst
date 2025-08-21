@@ -9,8 +9,6 @@ spherex_emu documentation
 Welcome to the spherex_emu documentation! Here you can find instructions for
 how to install and use the code, as well as explore the package API.
 
-Lumache hosts its documentation on Read the Docs.
-
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
@@ -18,3 +16,4 @@ Lumache hosts its documentation on Read the Docs.
    install.rst
    workflow.rst
    api/index.rst
+   examples/test_emulator.ipynb

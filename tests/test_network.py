@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 import os
 import pytest
 
@@ -68,7 +67,7 @@ def test_stacked_transformer_network():
     test_dir = current_dir+"/../configs/network_pars/network_pars_example.yaml"
 
     # constructes the network
-    test_emulator = emulator.pk_emulator(test_dir, "train")
+    test_emulator = emulator.ps_emulator(test_dir, "train")
 
     # generate a random input sequence and pass it through the network
     test_input = torch.randn(1, test_emulator.num_cosmo_params + \

@@ -71,3 +71,14 @@ def test_delta_chi2(input, output, invcov, normalized, expected):
     else:
         chi2 = delta_chi_squared(input, output, invcov, normalized)
         assert torch.allclose(chi2, torch.Tensor(expected))
+
+@pytest.mark.parametrize("num_spectra, num_zbins, num_kbins, num_ells", [
+    (1, 1, 20, 2)
+])
+def test_get_invcov_blocks(num_spectra, num_zbins, num_kbins, num_ells):
+
+    test_cov = torch.rand(num_zbins, num_spectra*num_kbins*num_ells, num_spectra*num_kbins*num_ells)
+
+    invcov_blocks = get_invcov_blocks(test_cov, num_spectra, num_zbins, num_kbins, num_ells)
+    assert invcov_blocks.shape == (num_spectra, num_zbins, num_ells*num_kbins, num_ells*num_kbins)
+    

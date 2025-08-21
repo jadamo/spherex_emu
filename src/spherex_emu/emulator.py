@@ -9,7 +9,6 @@ import logging
 from spherex_emu.models import blocks
 from spherex_emu.models.stacked_mlp import stacked_mlp
 from spherex_emu.models.stacked_transformer import stacked_transformer
-from spherex_emu.models.single_transformer import single_transformer
 from spherex_emu.models.analytic_terms import analytic_eft_model
 from spherex_emu.dataset import pk_galaxy_dataset
 from spherex_emu.utils import load_config_file, get_parameter_ranges,\
@@ -17,18 +16,20 @@ from spherex_emu.utils import load_config_file, get_parameter_ranges,\
                               delta_chi_squared, mse_loss, hyperbolic_loss, hyperbolic_chi2_loss, \
                               get_invcov_blocks, get_full_invcov, pca_inverse_transform
 
-class pk_emulator():
+class ps_emulator():
     """Class defining the neural network emulator."""
 
 
-    def __init__(self, net_dir:str, mode:str="train", device=None):
-        """Emulator constructor, initializes the network structure and all supporting data
+    def __init__(self, net_dir:str, mode:str="train", device:torch.device=None):
+        """Emulator constructor, initializes the network structure and all supporting data.
 
         Args:
-            net_dir: string specifying either the directory or full filepath of the trained emulator to load from.
+            net_dir (str): path specifying either the directory or full filepath of the trained emulator to load from.
             if a directory, assumes the config file is called "config.yaml"
-            mode: whether the emulator should initialize for training, or to load from a previous training run. One 
+            mode (str): whether the emulator should initialize for training, or to load from a previous training run. One 
             of either ["train", "eval"]. Detailt "train"
+            device (torch.device): Device to load the emulator on. If None, will attempt to load on any available
+            GPU (or mps for macos) device. Default None.
 
         Raises:
             KeyError: if mode is not correctly specified
@@ -40,7 +41,7 @@ class pk_emulator():
         # HACK: force normalization_type variable to be defined for older models
         self.normalization_type = "normal"
 
-        self.logger = logging.getLogger('pk_emulator')
+        self.logger = logging.getLogger('ps_emulator')
 
         # load dictionary entries into their own class variables
         for key in self.config_dict:
@@ -52,17 +53,16 @@ class pk_emulator():
         self._init_loss()
 
         if mode == "train":
+            self.logger.debug("Initializing power spectrum emulator in training mode")
             self._init_fiducial_power_spectrum()
             self._init_inverse_covariance()
             self._diagonalize_covariance()
             self._init_input_normalizations()
             self.galaxy_ps_model.apply(self._init_weights)
-            self.nw_ps_model.apply(self._init_weights)
-
             self.galaxy_ps_checkpoint = copy.deepcopy(self.galaxy_ps_model.state_dict())
-            self.nw_ps_checkpoint = copy.deepcopy(self.nw_ps_model.state_dict())
 
         elif mode == "eval":
+            self.logger.debug("Initializing power spectrum emulator in evaluation mode")
             self.load_trained_model(net_dir)
             self._init_analytic_model()
 
@@ -80,11 +80,8 @@ class pk_emulator():
 
         self.logger.info(f"loading emulator from {path}")
         self.galaxy_ps_model.eval()
-        self.nw_ps_model.eval()
         self.galaxy_ps_model.load_state_dict(torch.load(os.path.join(path,'network_galaxy.params'), 
                                                         weights_only=True, map_location=self.device))
-        self.nw_ps_model.load_state_dict(torch.load(os.path.join(path,'network_nw.params'), 
-                                                    weights_only=True, map_location=self.device))
 
         input_norm_data = torch.load(os.path.join(path,"input_normalizations.pt"), 
                                      map_location=self.device, weights_only=True)
@@ -213,8 +210,18 @@ class pk_emulator():
         return ["counterterm_0", "counterterm_2", "counterterm_fog", "P_shot"]
 
 
-    def check_kbins(self, test_kbins):
-        raise NotImplementedError
+    def check_kbins_are_compatible(self, test_kbins:np.array):
+        """Tests whether the passed test_kbins is the same as the emulator k-bins
+
+        Args:
+            test_kbins (np.array): k-array to check
+        Returns:
+            is_compatible (bool): Whether or not the given k-bins are compatible
+        """
+        
+        if test_kbins.shape != self.k_emu.shape: return False
+        else: return np.allclose(test_kbins, self.k_emu)
+
 
     # -----------------------------------------------------------
     # Helper methods: Not meant to be called by the user directly
@@ -241,8 +248,6 @@ class pk_emulator():
         else:
             raise KeyError(f"Invalid value for model_type: {self.model_type}")
         
-        self.nw_ps_model = single_transformer(self.config_dict).to(self.device)
-
 
     def _init_analytic_model(self):
         """Initializes object for calculating analytic eft terms"""
@@ -301,12 +306,6 @@ class pk_emulator():
             self.ps_fid = self.ps_fid.reshape(self.num_spectra, self.num_zbins, self.num_kbins * self.num_ells)
         else:
             self.ps_fid = torch.zeros((self.num_spectra, self.num_zbins, self.num_kbins * self.num_ells)).to(self.device)
-
-        ps_file = self.input_dir+self.training_dir+"nw_ps_fid.npy"
-        if os.path.exists(ps_file):
-            self.ps_nw_fid = torch.from_numpy(np.load(ps_file)).to(torch.float32).to(self.device)[0]
-        else:
-            self.ps_nw_fid = torch.zeros(self.config_dict["ps_nw_emulator"]["num_kbins"])
 
 
     def _init_inverse_covariance(self):
@@ -394,10 +393,6 @@ class pk_emulator():
 
         self.train_loss = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
         self.valid_loss = [[[] for i in range(self.num_zbins)] for j in range(self.num_spectra)]
-        
-        self.nw_train_loss = []
-        self.nw_valid_loss = []
-
         self.train_time = 0.
 
 
@@ -418,10 +413,6 @@ class pk_emulator():
             self.scheduler[ps][z] = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer[ps][z],
                                     "min", factor=0.1, patience=15)
 
-        # seperate optimizer for the non-wiggle power spectrum network
-        self.nw_optimizer = torch.optim.Adam(self.nw_ps_model.parameters(), lr=self.nw_ps_learning_rate)
-        self.nw_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.nw_optimizer, "min", factor=0.1, patience=15)
-
 
     def _update_checkpoint(self, net_idx=0, mode="galaxy_ps"):
         """saves current best network to an independent state_dict"""
@@ -430,9 +421,8 @@ class pk_emulator():
             for name in new_checkpoint.keys():
                 if "networks."+str(net_idx) in name:
                     self.galaxy_ps_checkpoint[name] = new_checkpoint[name]
-
-        elif mode == "nw_ps":
-            self.nw_ps_checkpoint = self.nw_ps_model.state_dict()
+        else:
+            raise NotImplementedError
 
         self._save_model()
 
@@ -453,8 +443,6 @@ class pk_emulator():
         if not os.path.exists(training_data_dir):
             os.mkdir(training_data_dir)
 
-        nw_training_data = torch.vstack([torch.Tensor(self.nw_train_loss), torch.Tensor(self.nw_valid_loss)])
-        torch.save(nw_training_data, os.path.join(training_data_dir, "train_data_nw.dat"))
         for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
             training_data = torch.vstack([torch.Tensor(self.train_loss[ps][z]), 
                                           torch.Tensor(self.valid_loss[ps][z]),
@@ -484,7 +472,7 @@ class pk_emulator():
 
         # Finally, the actual model parameters
         torch.save(self.galaxy_ps_checkpoint, os.path.join(save_dir, 'network_galaxy.params'))
-        torch.save(self.nw_ps_checkpoint, os.path.join(save_dir, 'network_nw.params'))
+
 
     def _check_params(self, params):
         """checks that input parameters are in the expected format and within the specified boundaries"""
@@ -542,12 +530,11 @@ def compile_multiple_device_training_results(save_dir:str, config_dir:str, num_g
         config_dir (string): path+name of the original network config file
         num_gpus (int): number of gpus to compile results of
     Returns:
-        full_emulator (pk_emulator): emulator object with all training data combined together.
+        full_emulator (ps_emulator): emulator object with all training data combined together.
     """
 
-    full_emulator = pk_emulator(config_dir, "train")
+    full_emulator = ps_emulator(config_dir, "train")
     full_emulator.galaxy_ps_model.eval()
-    full_emulator.nw_ps_model.eval()
 
     net_idx = torch.Tensor(list(itertools.product(range(full_emulator.num_spectra), range(full_emulator.num_zbins)))).to(int)
     split_indices = net_idx.chunk(num_gpus)
@@ -557,15 +544,13 @@ def compile_multiple_device_training_results(save_dir:str, config_dir:str, num_g
     full_emulator.train_time = 0.
     for n in range(num_gpus):
         sub_dir = "rank_"+str(n)
-        seperate_network = pk_emulator(os.path.join(save_dir,sub_dir), "eval")
+        seperate_network = ps_emulator(os.path.join(save_dir,sub_dir), "eval")
 
         # non-wiggle power spectrum network + kbins
         if n == 0:
             full_emulator.k_emu = np.load(os.path.join(save_dir,sub_dir,"kbins.npz"))["k"]
-            full_emulator.nw_ps_model = seperate_network.nw_ps_model
             train_data = torch.load(os.path.join(save_dir,sub_dir,"training_statistics/train_data_nw.dat"), weights_only=True)
             full_emulator.nw_train_loss = train_data[0,:]
-            full_emulator.nw_valid_loss = train_data[1,:]
 
         # galaxy power spectrum networks
         for (ps, z) in split_indices[n]:
@@ -579,6 +564,5 @@ def compile_multiple_device_training_results(save_dir:str, config_dir:str, num_g
             full_emulator.valid_loss[ps, z, :epochs] = train_data[1,:]
 
     full_emulator.galaxy_ps_checkpoint = copy.deepcopy(full_emulator.galaxy_ps_model.state_dict())
-    full_emulator.nw_ps_checkpoint = copy.deepcopy(full_emulator.nw_ps_model.state_dict())
     
     return full_emulator
