@@ -87,7 +87,12 @@ class ps_emulator():
                                      map_location=self.device, weights_only=True)
         self.input_normalizations = input_norm_data[0]
         self.required_emu_params  = input_norm_data[1]
-        self.k_emu = np.load(os.path.join(path, "kbins.npz"))["k"]
+
+        ps_properties = np.load(os.path.join(path, "ps_properties.npz"))
+        self.k_emu = ps_properties["k"]
+        self.ells = ps_properties["ells"]
+        self.z_eff = ps_properties["z_eff"]
+        self.ndens = ps_properties["ndens"]
 
         output_norm_data = torch.load(os.path.join(path,"output_normalizations.pt"), 
                                       map_location=self.device, weights_only=True)
@@ -134,7 +139,11 @@ class ps_emulator():
 
         if not hasattr(self, "k_emu"):
             self.logger.info("loading kbins from training set")
-            self.k_emu = np.load(os.path.join(dir, "kbins.npz"))["k"]
+            ps_properties = np.load(os.path.join(dir, "ps_properties.npz"))
+            self.k_emu = ps_properties["k"]
+            self.ells = ps_properties["ells"]
+            self.z_eff = ps_properties["z_eff"]
+            self.ndens = ps_properties["ndens"]
 
         if key in ["training", "validation", "testing"]:
             data = pk_galaxy_dataset(dir, key, data_frac)
@@ -252,9 +261,7 @@ class ps_emulator():
     def _init_analytic_model(self):
         """Initializes object for calculating analytic eft terms"""
 
-        # TODO: pass in redshift list and ell_list
-        #self.analytic_model = analytic_eft_model(self.num_tracers, [0.3, 0.5], [0,2], self.k_emu)
-        self.analytic_model = analytic_eft_model(self.num_tracers, [0.5], [0,2], self.k_emu)
+        self.analytic_model = analytic_eft_model(self.num_tracers, self.z_eff, self.ells, self.k_emu, self.ndens)
 
 
     def _init_input_normalizations(self):
@@ -453,9 +460,9 @@ class ps_emulator():
         with open(os.path.join(save_dir, 'config.yaml'), 'w') as outfile:
             yaml.dump(dict(self.config_dict), outfile, sort_keys=False, default_flow_style=False)
         if hasattr(self, "k_emu"):
-            np.savez(os.path.join(save_dir, "kbins.npz"), k=self.k_emu)
+            np.savez(os.path.join(save_dir, "ps_properties.npz"), k=self.k_emu, ells=self.ells, z_eff=self.z_eff, ndens=self.ndens)
         else:
-            self.logger.warning("kbins not initialized!")
+            self.logger.warning("power spectrum properties not initialized!")
 
         # data related to input normalization
         input_files = [self.input_normalizations, self.required_emu_params]
@@ -548,7 +555,11 @@ def compile_multiple_device_training_results(save_dir:str, config_dir:str, num_g
 
         # non-wiggle power spectrum network + kbins
         if n == 0:
-            full_emulator.k_emu = np.load(os.path.join(save_dir,sub_dir,"kbins.npz"))["k"]
+            ps_properties = np.load(os.path.join(save_dir, sub_dir, "ps_properties.npz"))
+            full_emulator.k_emu = ps_properties["k"]
+            full_emulator.ells = ps_properties["ells"]
+            full_emulator.z_eff = ps_properties["z_eff"]
+            full_emulator.ndens = ps_properties["ndens"]
             train_data = torch.load(os.path.join(save_dir,sub_dir,"training_statistics/train_data_nw.dat"), weights_only=True)
             full_emulator.nw_train_loss = train_data[0,:]
 

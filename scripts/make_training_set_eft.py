@@ -1,12 +1,9 @@
 # This script generates a training set for the spherex emulator based on Yosuke's EFT power spectrum model
 # Utilizing an embarrasingly parallel code structure
 
-import time, math, yaml, sys
+import time, math, yaml, sys, os
 import numpy as np
 from mpi4py import MPI
-
-from scipy.integrate import romb
-from scipy.special import lpmv
 
 import ps_theory_calculator_camb as ps_theory_calculator
 from spherex_emu.utils import *
@@ -163,8 +160,8 @@ def main():
         print("Generating fiducial power spectrum...")
         galaxy_ps, result = get_power_spectrum([{}], k, param_names, cosmo_dict, ps_config, theory)
         if result == 0:
-            np.save(save_dir+"ps_fid.npy", galaxy_ps)
-            np.savez(save_dir+"kbins.npz", k=k)
+            np.save(os.path.join(save_dir,"ps_fid.npy"), galaxy_ps)
+            np.savez(os.path.join(save_dir,"ps_properties.npz"), k=k, z_eff=z_eff, ells=np.array(ells), ndens=ndens_table)
         else:
             print("ERROR! failed to calculate fiducial power spectrum! Exiting...")
             return -1
@@ -187,10 +184,10 @@ def main():
     dataset_info = prepare_header_info(param_names, cosmo_dict, N - fail_compute)
 
     if galaxy_ps.shape[0] > 1:
-        np.savez(save_dir+"pk-raw_"+str(rank)+"_.npz", params=rank_samples, galaxy_ps=galaxy_ps)
+        np.savez(os.path.join(save_dir,"pk-raw_"+str(rank)+"_.npz"), params=rank_samples, galaxy_ps=galaxy_ps)
     
     if rank == 0:
-        with open(save_dir+'info.yaml', 'w') as outfile:
+        with open(os.path.join(save_dir,'info.yaml'), 'w') as outfile:
             yaml.dump(dataset_info, outfile, sort_keys=False, default_flow_style=False)
 
     del galaxy_ps

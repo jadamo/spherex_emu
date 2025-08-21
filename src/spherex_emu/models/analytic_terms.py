@@ -18,7 +18,7 @@ class analytic_eft_model():
     params_stoch_cross = {'P_shot_cross':0, 'a0_cross':0, 'a2_cross':0}
 
 
-    def __init__(self, num_tracers:int, redshift_list:list, ells:list, k:np.array):
+    def __init__(self, num_tracers:int, redshift_list:list, ells:list, k:np.array, ndens:np.array):
         """Sets up the model for calculating the counterterms and shot-noise contribution
         to the galaxy power spectrum.
         
@@ -39,7 +39,7 @@ class analytic_eft_model():
         self.dmu = self.mu[1] - self.mu[0]
 
         # HACK: hard-coding number density for now
-        self.ndens = 0.000501
+        self.ndens = ndens
 
         self.k_lin = np.geomspace(1e-4, 10., 1000)
         self.sigma_v = 0.
@@ -343,12 +343,14 @@ class analytic_eft_model():
         return pk_ell_ctr1
 
 
-    def get_stochastic_terms(self, k:np.array, mu:np.array, stoch1:dict, k_nl:float, is_cross:bool=False):
+    def get_stochastic_terms(self, k:np.array, mu:np.array, ps_idx:int, z_idx:int, stoch1:dict, k_nl:float, is_cross:bool=False):
         """Calculates the stochastic comtribution to the galaxy power spectrum for a specific tracer and redshift bin combination.
 
         Args:
             k (np.array): k-array to calculate the matter power spectrum from. In units of h/Mpc
             mu (np.array): array of line-of-site cos(theta) values
+            ps_idx (int): index corresponding to the specifc tracer bin. Used to acces the correct number density.
+            z_idx (int): index corresponding to the specifc redshift bin. Used to acces the correct number density.
             stoch1 (dict): dictionary of counterterm free parameters. Should include (P_shot, a0, a2)
             k_nl (float): non-linear k-mode.
             is_cross (bool): Whether the specific bin is an auto or cross spectrum. Default False.
@@ -363,7 +365,7 @@ class analytic_eft_model():
             pkmu = stoch1['P_shot']
             pkmu = pkmu + stoch1['a0'] * np.kron((k / k_nl)**2, lpmv(0,0,mu)).reshape(len(k), len(mu))
             pkmu = pkmu + stoch1['a2'] * np.kron((k / k_nl)**2, lpmv(0,2,mu)).reshape(len(k), len(mu))
-            pkmu = 1. / self.ndens * pkmu
+            pkmu = 1. / self.ndens[z_idx, ps_idx] * pkmu
         # currently ignoring cross-power spectrum stochastic contribution
         else:
             pkmu = np.zeros((len(k), len(mu)))
@@ -421,7 +423,7 @@ class analytic_eft_model():
                 #        self.get_ctr_terms(k_grid, mu_grid, bias1, bias2, ctr1, ctr2, params["fgrowth"][z], params["Dgrowth"][z]) + \
                 #        self.get_stochastic_terms()
                 pkmu = self.get_ctr_terms(k_grid, mu_grid, b1_1, b1_2, ctr1, ctr2, self.params["fgrowth"][z], self.params["Dgrowth"][z]) + \
-                       self.get_stochastic_terms(k_grid, mu_grid, stoch, k_nl, tr_1 != tr_2)
+                       self.get_stochastic_terms(k_grid, mu_grid, tr_1, z, stoch, k_nl, tr_1 != tr_2)
 
                 pkmu *= self.get_damping_factor(k_grid, mu_grid, self.params["fgrowth"][z])
 
