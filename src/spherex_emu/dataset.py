@@ -39,11 +39,6 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         data = np.load(file)
         self.params = torch.from_numpy(data["params"]).to(torch.float32)
         self.galaxy_ps = torch.from_numpy(data["galaxy_ps"]).to(torch.float32)
-        # HACK: for inconsistent naming on my part
-        try:
-            self.nw_ps = torch.from_numpy(data["ps_nw"]).to(torch.float32)
-        except:
-            self.nw_ps = torch.from_numpy(data["nw_ps"]).to(torch.float32)
         del data
 
         header_info = load_config_file(data_dir+"info.yaml")
@@ -59,7 +54,6 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
             N_frac = int(self.params.shape[0] * frac)
             self.params = self.params[0:N_frac]
             self.galaxy_ps = self.galaxy_ps[0:N_frac]
-            self.nw_ps = self.nw_ps[0:N_frac]
 
     def __len__(self):
         """Returns the number of samples in the dataset
@@ -81,7 +75,7 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
             nw_ps (torch.Tensor): (normalized non-wiggle linear power spectra corresponding to idx. NOTE: in developement
             idx (int or torch.Tensor): The index of the corresponding data.
         """
-        return self.params[idx], self.galaxy_ps[idx], self.nw_ps[idx], idx
+        return self.params[idx], self.galaxy_ps[idx], idx
 
 
     def to(self, device:torch.device):
@@ -92,7 +86,6 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         """
         self.params = self.params.to(device)
         self.galaxy_ps = self.galaxy_ps.to(device)
-        self.nw_ps = self.nw_ps.to(device)
     
 
     def normalize_data(self, ps_fid:torch.Tensor, ps_nw_fid:torch.Tensor, sqrt_eigvals:torch.Tensor, Q:torch.Tensor):
@@ -123,11 +116,6 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
             return torch.flatten(self.galaxy_ps[idx], start_dim=2)
         else:
             return torch.flatten(self.galaxy_ps[idx], start_dim=3)
-    
-
-    def get_normalized_nonwiggle_power_spectrum(self, idx):
-        """NOTE: Currently in developement"""
-        return self.nw_ps[idx]
 
 
     def get_true_galaxy_power_spectra(self, idx, ps_fid:torch.Tensor, sqrt_eigvals:torch.Tensor, Q:torch.Tensor, Q_inv:torch.Tensor):
@@ -146,17 +134,10 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         if isinstance(idx, int): 
             flatten_dim = 2
             final_shape = (self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
-        else:                    
+        else:          
             flatten_dim = 3
             final_shape = (-1, self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
 
         ps_true = un_normalize_power_spectrum(torch.flatten(self.galaxy_ps[idx], start_dim=flatten_dim), ps_fid, sqrt_eigvals, Q, Q_inv)
         ps_true = ps_true.reshape(final_shape)        
         return ps_true
-    
-    
-    def get_true_nonwiggle_power_spectra(self, idx, ps_nw_fid):
-        """NOTE: Currently in developement"""
-        #return torch.exp(self.nw_ps[idx]) + ps_nw_fid
-        return (self.nw_ps[idx] + 1.) * ps_nw_fid
-

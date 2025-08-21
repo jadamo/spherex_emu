@@ -384,7 +384,8 @@ class analytic_eft_model():
         Returns:
             pk_analtytic: P_ctr + P_stoch multipoles. Has shape (nps, nz, nl, nk).
         """
-        if len(param_vector) == len(emu_params_list):
+        if len(param_vector) == len(emu_params_list) or \
+           np.all(param_vector[len(emu_params_list):] == 0):
             return 0
 
         self.set_params(param_vector, emu_params_list, analytic_params_list)
