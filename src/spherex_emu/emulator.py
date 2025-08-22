@@ -14,7 +14,7 @@ from spherex_emu.dataset import pk_galaxy_dataset
 from spherex_emu.utils import load_config_file, get_parameter_ranges,\
                               normalize_cosmo_params, un_normalize_power_spectrum, \
                               delta_chi_squared, mse_loss, hyperbolic_loss, hyperbolic_chi2_loss, \
-                              get_invcov_blocks, get_full_invcov, pca_inverse_transform
+                              get_invcov_blocks, get_full_invcov, pca_inverse_transform, is_in_hypersphere
 
 class ps_emulator():
     """Class defining the neural network emulator."""
@@ -38,15 +38,15 @@ class ps_emulator():
         if net_dir.endswith(".yaml"): self.config_dict = load_config_file(net_dir)
         else:                         self.config_dict = load_config_file(os.path.join(net_dir,"config.yaml"))
 
-        # HACK: force normalization_type variable to be defined for older models
-        self.normalization_type = "normal"
-
         self.logger = logging.getLogger('ps_emulator')
+
+        # TODO: Remove this when removing PCA stuff
+        self.normalization_type = "normal"
+        self.config_dict["normalization_type"] = "normal"
 
         # load dictionary entries into their own class variables
         for key in self.config_dict:
             setattr(self, key, self.config_dict[key])
-        self.config_dict["normalization_type"] = self.normalization_type
 
         self._init_device(device, mode)
         self._init_model()
@@ -85,8 +85,9 @@ class ps_emulator():
 
         input_norm_data = torch.load(os.path.join(path,"input_normalizations.pt"), 
                                      map_location=self.device, weights_only=True)
-        self.input_normalizations = input_norm_data[0]
+        self.input_normalizations = input_norm_data[0] # <- in shape expected by networks
         self.required_emu_params  = input_norm_data[1]
+        self.emu_param_bounds     = input_norm_data[2]
 
         ps_properties = np.load(os.path.join(path, "ps_properties.npz"))
         self.k_emu = ps_properties["k"]
@@ -163,15 +164,17 @@ class ps_emulator():
             raise KeyError("Invalid value for key! must be one of ['training', 'validation', 'testing']")
 
 
-    def get_power_spectra(self, params, raw_output:bool = False):
+    def get_power_spectra(self, params, extrapolate:bool = False, raw_output:bool = False):
         """Gets the full galaxy power spectrum multipoles (emulated and analytically calculated)
         
         Args:
             params: 1D or 2D numpy array, torch Tensor, or dictionary containing a list of cosmology + galaxy bias parameters. 
                 if params is a 2D array, this function generates a batch of power spectra simultaniously
+            extrapolate (bool): Whether or not to pass through the emulator if the given input parameters are outside the range it was trained on.
+                Default False
             raw_output: bool specifying whether or not to return the raw network output without undoing normalization. Default False
         """
-        galaxy_ps_emu = self.get_emulated_power_spectrum(params, raw_output)
+        galaxy_ps_emu = self.get_emulated_power_spectrum(params, raw_output, extrapolate)
 
         if galaxy_ps_emu.shape[0] == 1: 
             return galaxy_ps_emu[0] + self.analytic_model.get_analytic_terms(params, self.required_emu_params, self.get_required_analytic_parameters())
@@ -179,18 +182,30 @@ class ps_emulator():
             return galaxy_ps_emu
 
 
-    def get_emulated_power_spectrum(self, params, raw_output:bool = False):
+    def get_emulated_power_spectrum(self, params, extrapolate:bool = False, raw_output:bool = False):
         """Gets the power spectra corresponding to the given input params by passing them though the emulator
         
         Args:
             params: 1D or 2D numpy array, torch Tensor, or dictionary containing a list of cosmology + galaxy bias parameters. 
-                if params is a 2D array, this function generates a batch of power spectra simultaniously
+            if params is a 2D array, this function generates a batch of power spectra simultaniously
+            extrapolate (bool): Whether or not to pass through the emulator if the given input parameters are outside the range it was trained on.
+            Default False
             raw_output: bool specifying whether or not to return the raw network output without undoing normalization. Default False
+
+        Returns:
+            galaxy_ps (np.array): emulated galaxy power spectrum multipoles (P_tree + P_1loop). If given a batch of parameters, has shape [nb, nps, nz, nk, nl]. 
+            Otherwise, has shape [nps, nz, nk, nl]. If extrapolate is false and the given input parameters are out of bounds, then this function returns
+            an array of all zeros.
         """
         
         self.galaxy_ps_model.eval()
         with torch.no_grad():
-            emu_params = self._check_params(params)
+            emu_params, skip_emulation = self._check_params(params, extrapolate)
+            if skip_emulation and params.shape[0] == 1:
+                return np.zeros((self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells))
+            elif skip_emulation and params.shape[0] > 1:
+                return np.zeros((params.shape[0], self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells))
+
             galaxy_ps = self.galaxy_ps_model.forward(emu_params) # <- shape [nb, nps, nz, nk*nl]
             
             if raw_output:
@@ -210,13 +225,32 @@ class ps_emulator():
 
 
     def get_required_emu_parameters(self):
-        """Returns a dictionary of input parameters needed by the emulator. Used within Cosmo_Inference"""
+        """Returns a list of input parameters needed by the emulator. 
+        
+        Currently, spherex_emu requires input parameters to be in the same order as given by
+        the return value of this function. For example. If the return list is ['h', 'omch2'], you
+        should pass in [h, omch2] to get_power_spectra in that order.
+        
+        Returns:
+            required_emu_params (list): list of input cosmology + bias parameters required by the emulator.
+        """
         return self.required_emu_params
 
 
     def get_required_analytic_parameters(self):
-        # TODO: find a better way to do this
-        return ["counterterm_0", "counterterm_2", "counterterm_fog", "P_shot"]
+        """Returns a list of input parameters used by our analytic eft model, not directly emulated.
+        
+        NOTE: These parameters are currently hard-coded.
+
+        Returns:
+            required_analytic_params (list): list of input (counterterm + stoch) parameters.
+        """
+        analytic_params = []
+        if 0 in self.ells:  analytic_params.append("counterterm_0")
+        if 2 in self.ells:  analytic_params.append("counterterm_2")
+        if 4 in self.ells:  analytic_params.append("counterterm_4")
+        analytic_params.extend(["counterterm_fog", "P_shot"])
+        return analytic_params
 
 
     def check_kbins_are_compatible(self, test_kbins:np.array):
@@ -271,7 +305,7 @@ class ps_emulator():
         """
 
         try:
-            cosmo_dict = load_config_file(self.input_dir+self.cosmo_dir)
+            cosmo_dict = load_config_file(os.path.join(self.input_dir,self.cosmo_dir))
             param_names, param_bounds = get_parameter_ranges(cosmo_dict)
             input_normalizations = torch.Tensor(param_bounds.T).to(self.device)
         except IOError:
@@ -283,6 +317,8 @@ class ps_emulator():
         upper_bounds = self.galaxy_ps_model.organize_parameters(input_normalizations[1].unsqueeze(0))
         self.input_normalizations = torch.vstack([lower_bounds, upper_bounds])
         self.required_emu_params = param_names
+        self.emu_param_bounds = torch.from_numpy(param_bounds).to(torch.float32).to(self.device)
+
 
     def _init_pca(self, data:pk_galaxy_dataset):
         """Transforms the given dataset to its corresponding princpiple components"""
@@ -465,7 +501,7 @@ class ps_emulator():
             self.logger.warning("power spectrum properties not initialized!")
 
         # data related to input normalization
-        input_files = [self.input_normalizations, self.required_emu_params]
+        input_files = [self.input_normalizations, self.required_emu_params, self.emu_param_bounds]
         torch.save(input_files, os.path.join(save_dir, "input_normalizations.pt"))
         with open(os.path.join(save_dir, "param_names.txt"), "w") as outfile:
             yaml.dump(self.get_required_emu_parameters(), outfile, sort_keys=False, default_flow_style=False)
@@ -481,8 +517,9 @@ class ps_emulator():
         torch.save(self.galaxy_ps_checkpoint, os.path.join(save_dir, 'network_galaxy.params'))
 
 
-    def _check_params(self, params):
+    def _check_params(self, params, extrapolate=False):
         """checks that input parameters are in the expected format and within the specified boundaries"""
+        skip_emulation = False
 
         if isinstance(params, torch.Tensor): 
             params = params.to(self.device)
@@ -496,14 +533,21 @@ class ps_emulator():
         if params.shape[1] > len(self.required_emu_params):
             params = params[:, :len(self.required_emu_params)]
 
-        params = self.galaxy_ps_model.organize_parameters(params)
+        org_params = self.galaxy_ps_model.organize_parameters(params)
 
-        if torch.any(params < self.input_normalizations[0]) or \
-           torch.any(params > self.input_normalizations[1]):
-            self.logger.warning("Input parameters out of bounds! Emulator output will be untrustworthy:")
-        
-        norm_params = normalize_cosmo_params(params, self.input_normalizations)
-        return norm_params
+        if (self.sampling_type == "hypercube" and \
+            torch.any(org_params < self.input_normalizations[0]) or \
+            torch.any(org_params > self.input_normalizations[1])) or \
+           (self.sampling_type == "hypersphere" and \
+            not is_in_hypersphere(self.emu_param_bounds, params)[0]):
+            if extrapolate:
+                self.logger.warning("Input parameters out of bounds! Emulator output will be untrustworthy:")
+            else: 
+                self.logger.info("Input parameters out of bounds! Skipping emulation...")
+                skip_emulation = True
+
+        norm_params = normalize_cosmo_params(org_params, self.input_normalizations)
+        return norm_params, skip_emulation
 
     def _check_training_set(self, data:pk_galaxy_dataset):
         """checks that loaded-in data for training / validation / testing is compatable with the given network config
@@ -553,15 +597,13 @@ def compile_multiple_device_training_results(save_dir:str, config_dir:str, num_g
         sub_dir = "rank_"+str(n)
         seperate_network = ps_emulator(os.path.join(save_dir,sub_dir), "eval")
 
-        # non-wiggle power spectrum network + kbins
+        # power spectrum properties used by analytic_terms.py
         if n == 0:
             ps_properties = np.load(os.path.join(save_dir, sub_dir, "ps_properties.npz"))
             full_emulator.k_emu = ps_properties["k"]
             full_emulator.ells = ps_properties["ells"]
             full_emulator.z_eff = ps_properties["z_eff"]
             full_emulator.ndens = ps_properties["ndens"]
-            train_data = torch.load(os.path.join(save_dir,sub_dir,"training_statistics/train_data_nw.dat"), weights_only=True)
-            full_emulator.nw_train_loss = train_data[0,:]
 
         # galaxy power spectrum networks
         for (ps, z) in split_indices[n]:

@@ -1,5 +1,7 @@
 import torch
 import pytest
+import numpy as np
+from spherex_emu.emulator import ps_emulator
 from spherex_emu.utils import *
 
 def test_normalize_cosmo_params():
@@ -82,3 +84,28 @@ def test_get_invcov_blocks(num_spectra, num_zbins, num_kbins, num_ells):
     invcov_blocks = get_invcov_blocks(test_cov, num_spectra, num_zbins, num_kbins, num_ells)
     assert invcov_blocks.shape == (num_spectra, num_zbins, num_ells*num_kbins, num_ells*num_kbins)
     
+@pytest.mark.parametrize("factor, type, expected",[
+    (0.5, "np", True),
+    (0.6, "torch", True),
+    (1.0, "torch", False)
+])
+def test_is_in_hypersphere(factor, type, expected):
+
+    current_dir = os.path.dirname(os.path.realpath(__file__))
+    test_cosmo_dir = current_dir+"/../configs/cosmo_pars/cosmo_pars_example.yaml"
+
+    cosmo_dict = load_config_file(test_cosmo_dir)
+    param_names, param_bounds = get_parameter_ranges(cosmo_dict)
+    
+    if type == "np":
+        test_params = np.ones(len(param_names)) * factor
+    elif type == "torch":
+        test_params = torch.ones(len(param_names)) * factor
+        param_bounds = torch.from_numpy(param_bounds)
+    test_params = test_params * (param_bounds[:,1] - param_bounds[:,0]) + param_bounds[:,0]
+
+    result, r = is_in_hypersphere(param_bounds, test_params)
+
+    assert result == expected
+    if result == False:
+        assert r > 1.

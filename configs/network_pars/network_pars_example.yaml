@@ -8,6 +8,7 @@ training_dir: ../../xdisk/training_set_eft_2t_2z_hypersphere/
 # Location of config file with cosmology + bias parameters
 # This file contains all of the parameter ranges
 cosmo_dir : ./configs/cosmo_pars/cosmo_pars_2t_2z.yaml
+sampling_type : hypersphere
 
 model_type : stacked_transformer
 loss_type : hyperbolic_chi2

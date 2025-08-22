@@ -173,10 +173,20 @@ def is_in_hypersphere(priors, params):
     """Returns whether or not the given params are within a hypersphere with edges defined by bounds"""
 
     # convert params to lay within the unit sphere
-    unit_params = np.zeros_like(params)
+    if isinstance(params, torch.Tensor):
+        unit_params = torch.zeros_like(params)
+        calc_method = torch
+    elif isinstance(params, np.ndarray):
+        unit_params = np.zeros_like(params)
+        calc_method = np
+
     for d in range(priors.shape[0]):
-        unit_params[d] = 2*(params[d] - priors[d,0]) / (priors[d,1] - priors[d,0]) - 1
-    r = np.sqrt(np.sum(unit_params**2))
+        if len(params.shape) == 1:
+            unit_params[d] = 2*(params[d] - priors[d,0]) / (priors[d,1] - priors[d,0]) - 1
+        elif len(params.shape) == 2:
+            unit_params[:,d] = 2*(params[:,d] - priors[d,0]) / (priors[d,1] - priors[d,0]) - 1
+    
+    r = calc_method.sqrt(calc_method.sum(unit_params**2))
     if r >= 1: return False, r
     else:      return True, r
 
