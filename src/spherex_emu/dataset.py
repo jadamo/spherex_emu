@@ -55,6 +55,7 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
             self.params = self.params[0:N_frac]
             self.galaxy_ps = self.galaxy_ps[0:N_frac]
 
+
     def __len__(self):
         """Returns the number of samples in the dataset
 
@@ -63,6 +64,7 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         """
         return self.params.shape[0]
     
+
     def __getitem__(self, idx):
         """Returns specific items from the dataset
 
@@ -88,7 +90,7 @@ class pk_galaxy_dataset(torch.utils.data.Dataset):
         self.galaxy_ps = self.galaxy_ps.to(device)
     
 
-    def normalize_data(self, ps_fid:torch.Tensor, ps_nw_fid:torch.Tensor, sqrt_eigvals:torch.Tensor, Q:torch.Tensor):
+    def normalize_data(self, ps_fid:torch.Tensor, sqrt_eigvals:torch.Tensor, Q:torch.Tensor):
         """Normalizes the reshapes the data
 
         Args:

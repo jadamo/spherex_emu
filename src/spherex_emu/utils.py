@@ -173,10 +173,20 @@ def is_in_hypersphere(priors, params):
     """Returns whether or not the given params are within a hypersphere with edges defined by bounds"""
 
     # convert params to lay within the unit sphere
-    unit_params = np.zeros_like(params)
+    if isinstance(params, torch.Tensor):
+        unit_params = torch.zeros_like(params)
+        calc_method = torch
+    elif isinstance(params, np.ndarray):
+        unit_params = np.zeros_like(params)
+        calc_method = np
+
     for d in range(priors.shape[0]):
-        unit_params[d] = 2*(params[d] - priors[d,0]) / (priors[d,1] - priors[d,0]) - 1
-    r = np.sqrt(np.sum(unit_params**2))
+        if len(params.shape) == 1:
+            unit_params[d] = 2*(params[d] - priors[d,0]) / (priors[d,1] - priors[d,0]) - 1
+        elif len(params.shape) == 2:
+            unit_params[:,d] = 2*(params[:,d] - priors[d,0]) / (priors[d,1] - priors[d,0]) - 1
+    
+    r = calc_method.sqrt(calc_method.sum(unit_params**2))
     if r >= 1: return False, r
     else:      return True, r
 
@@ -428,26 +438,9 @@ def calc_avg_loss(emulator, data_loader, loss_function:callable, bin_idx=None, m
             else:
                 raise KeyError(f"Invalid value for mode ({mode})")
 
-            if emulator.normalization_type == "pca":
-                prediction = pca_inverse_transform(prediction, emulator.principle_components, emulator.training_set_variance)
-                avg_loss += loss_function(prediction, target, emulator.invcov_blocks[bin_idx], False).item()
-            else:
-                avg_loss += loss_function(prediction, target, emulator.invcov_blocks, True).item()
+            avg_loss += loss_function(prediction, target, emulator.invcov_blocks, True).item()
 
     return avg_loss / (len(data_loader.dataset))
-
-
-def pca_transform(data, components, std):
-    """Performs a PCA transformation (NOTE: Unused function currently)"""
-    return (data / std) @ components.T
-
-
-def pca_inverse_transform(reduced_data:torch.Tensor, components, std):
-    """Performs a reverse PCA transformation (NOTE: Unused function currently)"""
-    if reduced_data.dim() == 2:
-        reduced_data = reduced_data.unsqueeze(1)
-
-    return (torch.matmul(reduced_data, components) * std).squeeze()
 
 
 def normalize_cosmo_params(params:torch.Tensor, normalizations:torch.Tensor):

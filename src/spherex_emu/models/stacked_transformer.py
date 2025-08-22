@@ -30,11 +30,7 @@ class single_transformer(nn.Module):
         else:
             self.input_dim = config_dict["num_cosmo_params"] + (2 * config_dict["num_nuisance_params"])
         
-        
-        if config_dict["normalization_type"] == "normal":
-            self.output_dim = self.num_ells * self.num_kbins
-        elif config_dict["normalization_type"] == "pca":
-            self.output_dim = config_dict["num_pcs"]
+        self.output_dim = self.num_ells * self.num_kbins
 
         # mlp blocks
         self.input_layer = nn.Linear(self.input_dim, self.output_dim)
@@ -100,10 +96,7 @@ class stacked_transformer(nn.Module):
         self.num_cosmo_params    = config_dict["num_cosmo_params"]
         self.num_nuisance_params = config_dict["num_nuisance_params"]
 
-        if config_dict["normalization_type"] == "normal":
-            self.output_dim = self.num_ells * self.num_kbins
-        elif config_dict["normalization_type"] == "pca":
-            self.output_dim = config_dict["num_pcs"]
+        self.output_dim = self.num_ells * self.num_kbins
 
         # Stores networks sequentially in a list
         self.networks = nn.ModuleList()
