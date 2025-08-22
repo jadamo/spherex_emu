@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.multiprocessing as mp
 import numpy as np
 import yaml, math, os, copy
 import itertools
@@ -14,7 +13,7 @@ from spherex_emu.dataset import pk_galaxy_dataset
 from spherex_emu.utils import load_config_file, get_parameter_ranges,\
                               normalize_cosmo_params, un_normalize_power_spectrum, \
                               delta_chi_squared, mse_loss, hyperbolic_loss, hyperbolic_chi2_loss, \
-                              get_invcov_blocks, get_full_invcov, pca_inverse_transform, is_in_hypersphere
+                              get_invcov_blocks, get_full_invcov, is_in_hypersphere
 
 class ps_emulator():
     """Class defining the neural network emulator."""
@@ -39,10 +38,6 @@ class ps_emulator():
         else:                         self.config_dict = load_config_file(os.path.join(net_dir,"config.yaml"))
 
         self.logger = logging.getLogger('ps_emulator')
-
-        # TODO: Remove this when removing PCA stuff
-        self.normalization_type = "normal"
-        self.config_dict["normalization_type"] = "normal"
 
         # load dictionary entries into their own class variables
         for key in self.config_dict:
@@ -97,23 +92,16 @@ class ps_emulator():
 
         output_norm_data = torch.load(os.path.join(path,"output_normalizations.pt"), 
                                       map_location=self.device, weights_only=True)
-        if self.normalization_type == "normal":
-            self.ps_fid        = output_norm_data[0]
-            self.ps_nw_fid     = output_norm_data[1]
-            self.invcov_full   = output_norm_data[2]
-            self.invcov_blocks = output_norm_data[3]
-            self.sqrt_eigvals  = output_norm_data[4]
-            self.Q             = output_norm_data[5]
-            self.Q_inv = torch.zeros_like(self.Q, device="cpu")
-            for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
-                self.Q_inv[ps, z] = torch.linalg.inv(self.Q[ps, z].to("cpu").to(torch.float64)).to(torch.float32)
-            self.Q_inv = self.Q_inv.to(self.device)
-
-        elif self.normalization_type == "pca":
-            self.principle_components = output_norm_data[0]
-            self.training_set_variance = output_norm_data[1]
-            self.invcov_full   = output_norm_data[2]
-            self.invcov_blocks = output_norm_data[3]
+        self.ps_fid        = output_norm_data[0]
+        self.ps_nw_fid     = output_norm_data[1]
+        self.invcov_full   = output_norm_data[2]
+        self.invcov_blocks = output_norm_data[3]
+        self.sqrt_eigvals  = output_norm_data[4]
+        self.Q             = output_norm_data[5]
+        self.Q_inv = torch.zeros_like(self.Q, device="cpu")
+        for (ps, z) in itertools.product(range(self.num_spectra), range(self.num_zbins)):
+            self.Q_inv[ps, z] = torch.linalg.inv(self.Q[ps, z].to("cpu").to(torch.float64)).to(torch.float32)
+        self.Q_inv = self.Q_inv.to(self.device)
 
 
     def load_data(self, key:str, data_frac = 1.0, return_dataloader=True, data_dir=""):
@@ -149,13 +137,9 @@ class ps_emulator():
         if key in ["training", "validation", "testing"]:
             data = pk_galaxy_dataset(dir, key, data_frac)
             data.to(self.device)
-            if self.normalization_type == "normal":
-                data.normalize_data(self.ps_fid, self.ps_nw_fid, self.sqrt_eigvals, self.Q)
-            elif self.normalization_type == 'pca' and key == "training":
-                self._init_pca(data)
+            data.normalize_data(self.ps_fid, self.ps_nw_fid, self.sqrt_eigvals, self.Q)
 
             data_loader = torch.utils.data.DataLoader(data, batch_size=self.config_dict["batch_size"], shuffle=True)
-            
             self._check_training_set(data)
 
             if return_dataloader: return data_loader
@@ -211,10 +195,7 @@ class ps_emulator():
             if raw_output:
                 return galaxy_ps
 
-            if self.normalization_type == "normal":
-                galaxy_ps = un_normalize_power_spectrum(torch.flatten(galaxy_ps, start_dim=3), self.ps_fid, self.sqrt_eigvals, self.Q, self.Q_inv)
-            elif self.normalization_type == "pca":
-                galaxy_ps = pca_inverse_transform(galaxy_ps, self.principle_components, self.training_set_variance)
+            galaxy_ps = un_normalize_power_spectrum(torch.flatten(galaxy_ps, start_dim=3), self.ps_fid, self.sqrt_eigvals, self.Q, self.Q_inv)
 
             if params.shape[0] == 1:
                 galaxy_ps = galaxy_ps.view(self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
@@ -318,20 +299,6 @@ class ps_emulator():
         self.input_normalizations = torch.vstack([lower_bounds, upper_bounds])
         self.required_emu_params = param_names
         self.emu_param_bounds = torch.from_numpy(param_bounds).to(torch.float32).to(self.device)
-
-
-    def _init_pca(self, data:pk_galaxy_dataset):
-        """Transforms the given dataset to its corresponding princpiple components"""
-
-        X = data.galaxy_ps.flatten(start_dim=1).to(torch.float64)
-        std = torch.std(X, axis=0)
-
-        cov = torch.cov(X.T) / torch.outer(std, std)
-        eig, V = torch.linalg.eig(cov)
-        assert torch.all(eig.real > 0)
-
-        self.principle_components = V.T[:self.num_pcs].real.to(torch.float32)
-        self.training_set_variance = std.to(torch.float32)
 
 
     def _init_fiducial_power_spectrum(self):
@@ -507,10 +474,7 @@ class ps_emulator():
             yaml.dump(self.get_required_emu_parameters(), outfile, sort_keys=False, default_flow_style=False)
 
         # data related to output normalization
-        if self.normalization_type == "normal":
-            output_files = [self.ps_fid, self.ps_nw_fid, self.invcov_full, self.invcov_blocks, self.sqrt_eigvals, self.Q]
-        elif self.normalization_type == "pca":
-            output_files = [self.principle_components, self.training_set_variance, self.invcov_full, self.invcov_blocks]
+        output_files = [self.ps_fid, self.ps_nw_fid, self.invcov_full, self.invcov_blocks, self.sqrt_eigvals, self.Q]
         torch.save(output_files, os.path.join(save_dir, "output_normalizations.pt"))
 
         # Finally, the actual model parameters

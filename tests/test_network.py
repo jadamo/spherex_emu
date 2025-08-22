@@ -87,5 +87,3 @@ def test_stacked_transformer_network():
                                          test_emulator.num_zbins,
                                          test_emulator.num_kbins*test_emulator.num_ells)
     assert torch.allclose(test_output_sub, test_output_full[:,0,0])
-
-

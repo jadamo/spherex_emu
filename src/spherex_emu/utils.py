@@ -438,26 +438,9 @@ def calc_avg_loss(emulator, data_loader, loss_function:callable, bin_idx=None, m
             else:
                 raise KeyError(f"Invalid value for mode ({mode})")
 
-            if emulator.normalization_type == "pca":
-                prediction = pca_inverse_transform(prediction, emulator.principle_components, emulator.training_set_variance)
-                avg_loss += loss_function(prediction, target, emulator.invcov_blocks[bin_idx], False).item()
-            else:
-                avg_loss += loss_function(prediction, target, emulator.invcov_blocks, True).item()
+            avg_loss += loss_function(prediction, target, emulator.invcov_blocks, True).item()
 
     return avg_loss / (len(data_loader.dataset))
-
-
-def pca_transform(data, components, std):
-    """Performs a PCA transformation (NOTE: Unused function currently)"""
-    return (data / std) @ components.T
-
-
-def pca_inverse_transform(reduced_data:torch.Tensor, components, std):
-    """Performs a reverse PCA transformation (NOTE: Unused function currently)"""
-    if reduced_data.dim() == 2:
-        reduced_data = reduced_data.unsqueeze(1)
-
-    return (torch.matmul(reduced_data, components) * std).squeeze()
 
 
 def normalize_cosmo_params(params:torch.Tensor, normalizations:torch.Tensor):
