@@ -185,9 +185,9 @@ class ps_emulator():
         self.galaxy_ps_model.eval()
         with torch.no_grad():
             emu_params, skip_emulation = self._check_params(params, extrapolate)
-            if skip_emulation and params.shape[0] == 1:
+            if skip_emulation and len(params.shape) == 1:
                 return np.zeros((self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells))
-            elif skip_emulation and params.shape[0] > 1:
+            elif skip_emulation and len(params.shape) > 1:
                 return np.zeros((params.shape[0], self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells))
 
             galaxy_ps = self.galaxy_ps_model.forward(emu_params) # <- shape [nb, nps, nz, nk*nl]
