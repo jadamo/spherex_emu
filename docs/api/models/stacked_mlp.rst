@@ -5,5 +5,5 @@ Stacked MLP Model
 
 A set of classes defining a simpler (stacked) MLP models
 
-.. automodule:: models.stacked_mlp
+.. automodule:: mentat_lss.models.stacked_mlp
    :members:

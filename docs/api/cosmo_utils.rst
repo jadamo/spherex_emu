@@ -3,7 +3,7 @@
 Cosmo Utils
 ===========
 
-Helper functions used by models/analytic_terms.py
+Helper functions used by ``mentat_lss.models.analytic_terms``
 
-.. automodule:: cosmo_utils
+.. automodule:: mentat_lss.cosmo_utils
    :members:
