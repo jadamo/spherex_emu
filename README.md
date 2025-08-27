@@ -1,12 +1,11 @@
 [![pytests](https://github.com/jadamo/mentat-lss/actions/workflows/pytest.yaml/badge.svg)](https://github.com/jadamo/mentat-lss/actions/workflows/pytest.yaml)
+![Read the Docs](https://img.shields.io/readthedocs/spherex_emu)
 
-# mentat-lss
+# MENTAT-LSS
 
-### **M**ultipole **E**mulator for **N**onlinear **T**racer **A**nalysis of **T**wo-point statistics and **L**arge **S**cale **S**tructure
+The **M**ultipole **E**mulator for **N**onlinear **T**racer **A**nalysis of **T**wo-point statistics and **L**arge **S**cale **S**tructure is a package providing tools to create and use a neural network emulator that outputs redshift-space galaxy power spectrum multipoles given a set of input cosmology + galaxy bias parameters. Said emulator is able to generate multipoles for multiple tracer and redhshift bins simultaniously. While originally designed for use in SPHEREx likelihood inference studies, mentat-lss can be used for any galaxy clustering survey (BOSS, DESI, etc).
 
-This package provides tools to create and use a neural network emulator that outputs redshift-space galaxy power spectrum multipoles given a set of input cosmology + galaxy bias parameters. Said emulator is able to generate multipoles for multiple tracer and redhshift bins simultaniously. While originally designed for use in SPHEREx likelihood inference studies, mentat-lss can be used for any galaxy clustering survey (BOSS, DESI, etc).
-
-Check out our documentation on [ReadTheDocs](https://spherex-emu.readthedocs.io/en/latest/index.html)!
+For more details on how to use this package, check out our documentation on [ReadTheDocs](https://spherex-emu.readthedocs.io/en/latest/index.html)!
 
 ## Installing the code
 
