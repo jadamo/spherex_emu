@@ -4,7 +4,7 @@ Training on GPU(s)
 ===================
 
 Training networks on GPUs has exploded in popularity in recent years. As such,
-we have built spherex_emu with full gpu compatability on both linux and macos (arm64) architectures.
+we have built mentat-lss with full gpu compatability on both linux and macos (arm64) architectures.
 The hardest part is thus making sure your enviornment is correctly setup to utilize your hardware.
 
 Enviornment troubleshooting

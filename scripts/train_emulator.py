@@ -1,11 +1,11 @@
-from spherex_emu.emulator import ps_emulator, compile_multiple_device_training_results
+from mentat_lss.emulator import ps_emulator, compile_multiple_device_training_results
 import time, sys
 import torch
 import torch.multiprocessing as mp
 import itertools
 import logging
 
-import spherex_emu.training_loops as training_loops
+import mentat_lss.training_loops as training_loops
 
 def main():
 

@@ -1,6 +1,7 @@
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../src/spherex_emu/'))
+sys.path.insert(0, os.path.abspath('../'))
+sys.path.insert(0, os.path.abspath('../src/mentat_lss/'))
 
 # Configuration file for the Sphinx documentation builder.
 #
@@ -10,11 +11,11 @@ sys.path.insert(0, os.path.abspath('../src/spherex_emu/'))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'spherex_emu'
+project = 'mentat-lss'
 copyright = '2025, Joe Adamo, Grace Gibbins, Annie Moore'
 author = 'Joe Adamo, Grace Gibbins, Annie Moore'
 root_doc = 'index'
-release = '0.9.0'
+release = '0.9.3'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

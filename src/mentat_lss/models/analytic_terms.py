@@ -5,7 +5,7 @@ from scipy.interpolate import InterpolatedUnivariateSpline, RectBivariateSpline
 from scipy.optimize import fsolve
 import itertools, math
 import symbolic_pofk.linear as linear
-from spherex_emu.cosmo_utils import LCDMCosmology, IRResum, get_log_extrap
+from mentat_lss.cosmo_utils import LCDMCosmology, IRResum, get_log_extrap
 
 class analytic_eft_model():
     """Class contatining calculations for the non-emulated terms of the EFT galaxy power spectrum"""

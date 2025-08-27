@@ -3,7 +3,7 @@
 Workflow Example
 ================
 
-This page walks through an expected workflow using `spherex_emu`, split up into **generating a training set**, **training the network**, and **testing / using the network**
+This page walks through an expected workflow using `mentat-lss`, split up into **generating a training set**, **training the network**, and **testing / using the network**
 
 Generating a Training Set
 -------------------------
@@ -31,7 +31,7 @@ The following is an example of such a file.
 .. code-block:: yaml
 
     # directory that all other paths are relative to
-    input_dir: /home/u12/jadamo/SPHEREx/spherex_emu/
+    input_dir: /home/u12/jadamo/SPHEREx/mentat-lss/
     # Where to save the network
     save_dir: ./emulators/stacked_transformer_2t_2z_hypersphere/
     # Where your training set lives
@@ -81,7 +81,7 @@ The following is an example of such a file.
 
 Here are some important considerations to make before training:
 
-- You'll need to decide whether to try training your network on a CPU or GPU (assuming one is available to you). In general, networks with transformers train **significantly** faster on  GPUs, so we recommend you try training on GPUs whenever possible. By defualt, spherex_emu will attempt to use a GPU if it is available.
+- You'll need to decide whether to try training your network on a CPU or GPU (assuming one is available to you). In general, networks with transformers train **significantly** faster on  GPUs, so we recommend you try training on GPUs whenever possible. By defualt, mentat-lss will attempt to use a GPU if it is available.
 - The specific binning information (num_zbins, num_ells, etc) must match those found in the training set. The code will throw an error on startup if they don't.
 - The above specifications are the optimized values found in PAPER_LINK_HERE. The optimal setup will potentially be different for your case, but these values should provide a good starting point.
 
@@ -89,8 +89,8 @@ Once you have your configs all sorted. You can train you network using the follo
 
 .. code-block:: python
 
-    from spherex_emu.emulator import pk_emulator
-    import spherex_emu.training_loops as training_loops
+    from mentat_lss.emulator import pk_emulator
+    import mentat_lss.training_loops as training_loops
     import logging
 
     config_file = "/path/to/config_file.yaml"
@@ -108,7 +108,7 @@ Once you have your configs all sorted. You can train you network using the follo
 We have also provided a more robust script in `scripts/train_emulator.py` that also
 handles training on multiple GPUs. Fore more details, see :doc:`tutorials/training`.
 
-During the actual training process, `spherex_emu` will loop through each subnet, each of which
+During the actual training process, `mentat-lss` will loop through each subnet, each of which
 correspond to a single tracer / redshift bin. It will then print out the average training set and 
 validation set loss values, as well as the number of epochs elapses since the validation loss improved.::
 

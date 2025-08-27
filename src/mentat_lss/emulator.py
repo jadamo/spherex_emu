@@ -5,12 +5,12 @@ import yaml, math, os, copy
 import itertools
 import logging
 
-from spherex_emu.models import blocks
-from spherex_emu.models.stacked_mlp import stacked_mlp
-from spherex_emu.models.stacked_transformer import stacked_transformer
-from spherex_emu.models.analytic_terms import analytic_eft_model
-from spherex_emu.dataset import pk_galaxy_dataset
-from spherex_emu.utils import load_config_file, get_parameter_ranges,\
+from mentat_lss.models import blocks
+from mentat_lss.models.stacked_mlp import stacked_mlp
+from mentat_lss.models.stacked_transformer import stacked_transformer
+from mentat_lss.models.analytic_terms import analytic_eft_model
+from mentat_lss.dataset import pk_galaxy_dataset
+from mentat_lss.utils import load_config_file, get_parameter_ranges,\
                               normalize_cosmo_params, un_normalize_power_spectrum, \
                               delta_chi_squared, mse_loss, hyperbolic_loss, hyperbolic_chi2_loss, \
                               get_invcov_blocks, get_full_invcov, is_in_hypersphere
@@ -208,7 +208,7 @@ class ps_emulator():
     def get_required_emu_parameters(self):
         """Returns a list of input parameters needed by the emulator. 
         
-        Currently, spherex_emu requires input parameters to be in the same order as given by
+        Currently, mentat-lss requires input parameters to be in the same order as given by
         the return value of this function. For example. If the return list is ['h', 'omch2'], you
         should pass in [h, omch2] to get_power_spectra in that order.
         

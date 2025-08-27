@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 
-from spherex_emu.utils import load_config_file, normalize_power_spectrum, un_normalize_power_spectrum
+from mentat_lss.utils import load_config_file, normalize_power_spectrum, un_normalize_power_spectrum
 
 class pk_galaxy_dataset(torch.utils.data.Dataset):
     """Custom dataset storing large sets of galaxy power spectrum multipoles"""

@@ -3,10 +3,10 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-spherex_emu Documentation
+mentat-lss Documentation
 =========================
 
-Welcome to the spherex_emu documentation! Here you can find instructions for
+Welcome to the mentat-lss documentation! Here you can find instructions for
 how to install and use the code, as well as explore the package API.
 
 .. toctree::

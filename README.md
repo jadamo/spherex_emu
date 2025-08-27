@@ -1,6 +1,6 @@
 [![pytests](https://github.com/jadamo/spherex_emu/actions/workflows/pytest.yaml/badge.svg)](https://github.com/jadamo/spherex_emu/actions/workflows/pytest.yaml)
 
-# spherex_emu
+# mentat-lss
 
 This repository contains code to create a neural network emulator that outputs redshift-space galaxy power spectrum multipoles given a set of input cosmology + galaxy bias parameters. Said emulator is able to generate multipoles for multiple tracer and redhshift bins simultaniously, and is primarily meant for use in SPHEREx likelihood inference studies. 
 

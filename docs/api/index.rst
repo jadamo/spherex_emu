@@ -1,3 +1,5 @@
+.. api index file
+
 API Reference
 =============
 
