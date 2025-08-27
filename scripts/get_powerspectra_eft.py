@@ -1,10 +1,10 @@
 import numpy as np
 
 import ps_theory_calculator_camb as ps_theory_calculator
-from spherex_emu.utils import prepare_ps_inputs, load_config_file
+from mentat_lss.utils import prepare_ps_inputs, load_config_file
 
 def main():
-    pars_dir = "/Users/JoeyA/Research/SPHEREx/spherex_emu/configs"
+    pars_dir = "/Users/JoeyA/Research/SPHEREx/mentat_lss/configs"
     cosmo_dict = load_config_file(pars_dir+"/cosmo_pars/cosmo_pars_2t_2z_corrected.yaml")
     survey_pars = load_config_file(pars_dir+'/survey_pars/survey_pars_2_tracer_2_redshift.yaml')
 

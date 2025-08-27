@@ -137,7 +137,7 @@ class ps_emulator():
         if key in ["training", "validation", "testing"]:
             data = pk_galaxy_dataset(dir, key, data_frac)
             data.to(self.device)
-            data.normalize_data(self.ps_fid, self.ps_nw_fid, self.sqrt_eigvals, self.Q)
+            data.normalize_data(self.ps_fid, self.sqrt_eigvals, self.Q)
 
             data_loader = torch.utils.data.DataLoader(data, batch_size=self.config_dict["batch_size"], shuffle=True)
             self._check_training_set(data)
@@ -156,12 +156,16 @@ class ps_emulator():
                 if params is a 2D array, this function generates a batch of power spectra simultaniously
             extrapolate (bool): Whether or not to pass through the emulator if the given input parameters are outside the range it was trained on.
                 Default False
-            raw_output: bool specifying whether or not to return the raw network output without undoing normalization. Default False
+            raw_output (bool): Whether or not to return the raw network output without undoing normalization. Default False
+        
+        Returns:
+            galaxy_ps (np.array): Emulated galaxy power spectrum multipoles. 
+            If raw_output = False, has shape [nps, nz, nk, nl] or [nb, nps, nz, nk, nl]. Else has shape [nb, nps, nz, nk*nl]
         """
-        galaxy_ps_emu = self.get_emulated_power_spectrum(params, raw_output, extrapolate)
+        galaxy_ps_emu = self.get_emulated_power_spectrum(params, extrapolate, raw_output)
 
-        if galaxy_ps_emu.shape[0] == 1: 
-            return galaxy_ps_emu[0] + self.analytic_model.get_analytic_terms(params, self.required_emu_params, self.get_required_analytic_parameters())
+        if len(galaxy_ps_emu.shape) == 4 and raw_output == False: 
+            return galaxy_ps_emu + self.analytic_model.get_analytic_terms(params, self.required_emu_params, self.get_required_analytic_parameters())
         else:
             return galaxy_ps_emu
 
@@ -185,9 +189,9 @@ class ps_emulator():
         self.galaxy_ps_model.eval()
         with torch.no_grad():
             emu_params, skip_emulation = self._check_params(params, extrapolate)
-            if skip_emulation and len(params.shape) == 1:
+            if skip_emulation and not raw_output and len(params.shape) == 1:
                 return np.zeros((self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells))
-            elif skip_emulation and len(params.shape) > 1:
+            elif skip_emulation and not raw_output and len(params.shape) > 1:
                 return np.zeros((params.shape[0], self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells))
 
             galaxy_ps = self.galaxy_ps_model.forward(emu_params) # <- shape [nb, nps, nz, nk*nl]
@@ -197,7 +201,7 @@ class ps_emulator():
 
             galaxy_ps = un_normalize_power_spectrum(torch.flatten(galaxy_ps, start_dim=3), self.ps_fid, self.sqrt_eigvals, self.Q, self.Q_inv)
 
-            if params.shape[0] == 1:
+            if len(params.shape) == 1:
                 galaxy_ps = galaxy_ps.view(self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
             else:
                 galaxy_ps = galaxy_ps.view(-1, self.num_spectra, self.num_zbins, self.num_kbins, self.num_ells)
@@ -499,13 +503,16 @@ class ps_emulator():
 
         org_params = self.galaxy_ps_model.organize_parameters(params)
 
+        # TODO: Better handling with batch of parameters
+        # Right now, this if-statement will trigger if any of the batch of parameters
+        # are out of bounds
         if (self.sampling_type == "hypercube" and \
             torch.any(org_params < self.input_normalizations[0]) or \
             torch.any(org_params > self.input_normalizations[1])) or \
            (self.sampling_type == "hypersphere" and \
-            not is_in_hypersphere(self.emu_param_bounds, params)[0]):
+            not torch.any(is_in_hypersphere(self.emu_param_bounds, params)[0])):
             if extrapolate:
-                self.logger.warning("Input parameters out of bounds! Emulator output will be untrustworthy:")
+                self.logger.warning("Input parameters out of bounds! Emulator output will be untrustworthy")
             else: 
                 self.logger.info("Input parameters out of bounds! Skipping emulation...")
                 skip_emulation = True
