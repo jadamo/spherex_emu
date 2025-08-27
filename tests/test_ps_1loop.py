@@ -2,7 +2,7 @@
 # import numpy as np
 # import yaml, os
 
-# from spherex_emu.utils import *
+# from mentat_lss.utils import *
 
 # def test_ps_multi_sample_multi_redshift():
 

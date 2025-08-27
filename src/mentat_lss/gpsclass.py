@@ -1,11 +1,11 @@
 import numpy as np
 from scipy import integrate
 from scipy.special import eval_legendre
-from spherex_emu.fastpt import FASTPT
+from mentat_lss.fastpt import FASTPT
 from scipy.interpolate import InterpolatedUnivariateSpline
 import camb
 from camb import model
-from spherex_emu.utils import fgrowth
+from mentat_lss.utils import fgrowth
 
 #Calculates Galaxy PS from Linear PS
 class CalcGalaxyPowerSpec:

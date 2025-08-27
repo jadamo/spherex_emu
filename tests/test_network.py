@@ -2,8 +2,8 @@ import torch
 import os
 import pytest
 
-import spherex_emu.emulator as emulator
-from spherex_emu.models.blocks import *
+import mentat_lss.emulator as emulator
+from mentat_lss.models.blocks import *
 
 def test_linear_with_channels():
     # test that the linear_with_channels sub-block treats channels independently

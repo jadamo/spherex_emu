@@ -6,7 +6,7 @@ import numpy as np
 from mpi4py import MPI
 
 import ps_theory_calculator_camb as ps_theory_calculator
-from spherex_emu.utils import *
+from mentat_lss.utils import *
 
 #-------------------------------------------------------------------
 # GLOBAL VARIABLES

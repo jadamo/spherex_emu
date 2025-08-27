@@ -4,8 +4,8 @@ import itertools
 import logging
 import os
 
-from spherex_emu.emulator import ps_emulator, compile_multiple_device_training_results
-from spherex_emu.utils import calc_avg_loss, normalize_cosmo_params
+from mentat_lss.emulator import ps_emulator, compile_multiple_device_training_results
+from mentat_lss.utils import calc_avg_loss, normalize_cosmo_params
 
 
 def train_galaxy_ps_one_epoch(emulator:ps_emulator, train_loader:torch.utils.data.DataLoader, bin_idx:list):

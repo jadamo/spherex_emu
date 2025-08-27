@@ -1,7 +1,9 @@
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../src/spherex_emu/'))
+sys.path.insert(0, os.path.abspath('../src'))
 
+import mentat_lss
+print(mentat_lss.__file__)
 # Configuration file for the Sphinx documentation builder.
 #
 # For the full list of built-in configuration values, see the documentation:
@@ -10,23 +12,22 @@ sys.path.insert(0, os.path.abspath('../src/spherex_emu/'))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'spherex_emu'
+project = 'mentat-lss'
 copyright = '2025, Joe Adamo, Grace Gibbins, Annie Moore'
 author = 'Joe Adamo, Grace Gibbins, Annie Moore'
 root_doc = 'index'
-release = '0.9.0'
+release = '0.9.3'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ["sphinx.ext.autodoc", "sphinx.ext.napoleon"]
+extensions = ["sphinx.ext.autodoc", 
+              "sphinx.ext.napoleon",
+              "sphinx.ext.viewcode",
+              'nbsphinx']
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
-
-extensions = [
-        'nbsphinx',
-    ]
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

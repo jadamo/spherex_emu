@@ -1,12 +1,12 @@
 import numpy as np
 
 import ps_theory_calculator_camb as ps_theory_calculator
-from spherex_emu.utils import prepare_ps_inputs, load_config_file
+from mentat_lss.utils import prepare_ps_inputs, load_config_file
 
 def main():
-    pars_dir = "/Users/JoeyA/Research/SPHEREx/spherex_emu/configs"
-    cosmo_dict = load_config_file(pars_dir+"/cosmo_pars/cosmo_pars_1t_1z_corrected.yaml")
-    survey_pars = load_config_file(pars_dir+'/survey_pars/survey_pars_1_tracer_1_redshift.yaml')
+    pars_dir = "/Users/JoeyA/Research/SPHEREx/mentat_lss/configs"
+    cosmo_dict = load_config_file(pars_dir+"/cosmo_pars/cosmo_pars_2t_2z_corrected.yaml")
+    survey_pars = load_config_file(pars_dir+'/survey_pars/survey_pars_2_tracer_2_redshift.yaml')
 
     ndens_table = np.array([[float(survey_pars['number_density_in_hinvMpc_%s' % (i+1)][j]) for j in range(survey_pars['nz'])] for i in range(survey_pars['nsample'])])
     z_eff = (np.array(survey_pars["zbin_lo"]) + np.array(survey_pars["zbin_hi"])) / 2.
@@ -32,10 +32,9 @@ def main():
 
     theory = ps_theory_calculator.PowerSpectrumMultipole1Loop(ps_config)
     galaxy_ps = theory(k, ells, param_vector) / cosmo_dict["cosmo_params"]["h"]["value"]**3
-    print(galaxy_ps.shape)
     galaxy_ps = galaxy_ps.transpose(1, 0, 3, 2)
     print(galaxy_ps.shape)
-    save_str = "/Users/JoeyA/Research/SPHEREx/Cosmo_Inference/src/spherex_cobaya/sample_data/ps_emu/ps_fid_1t_1z.npy"
+    save_str = "/Users/JoeyA/Research/SPHEREx/Cosmo_Inference/src/spherex_cobaya/sample_data/ps_emu/ps_fid_2t_2z.npy"
     print("saving to: ", save_str)
     np.save(save_str, galaxy_ps)
 

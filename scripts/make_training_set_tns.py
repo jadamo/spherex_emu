@@ -9,9 +9,8 @@ from multiprocessing import Pool
 from itertools import repeat
 
 import ps_theory_calculator
-from spherex_emu.gpsclass import CalcGalaxyPowerSpec
-from spherex_emu.utils import *
-import spherex_emu.filepaths as filepaths 
+from mentat_lss.gpsclass import CalcGalaxyPowerSpec
+from mentat_lss.utils import *
 
 #-------------------------------------------------------------------
 # GLOBAL VARIABLES

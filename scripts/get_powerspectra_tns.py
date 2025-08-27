@@ -3,9 +3,9 @@ import camb, itertools
 from camb import model
 from math import comb
 
-#from spherex_emu.fastpt import FASTPT
-from spherex_emu.gpsclass import CalcGalaxyPowerSpec
-from spherex_emu.utils import prepare_ps_inputs, load_config_file, fgrowth
+#from mentat_lss.fastpt import FASTPT
+from mentat_lss.gpsclass import CalcGalaxyPowerSpec
+from mentat_lss.utils import prepare_ps_inputs, load_config_file, fgrowth
 
 #Creates galaxy power spectra from a set of input parameters - input into galaxy ps class
 def get_power_spectrum(params, k, num_tracers, z_eff):
@@ -39,7 +39,7 @@ def get_power_spectrum(params, k, num_tracers, z_eff):
 
 def main():
     
-    input_dir = "/home/joeadamo/Research/SPHEREx/spherex_emu/"
+    input_dir = "/home/joeadamo/Research/SPHEREx/mentat_lss/"
     cosmo_dict = load_config_file(input_dir+"configs/cosmo_pars/cosmo_pars_tns.yaml")
     survey_pars = load_config_file(input_dir+"configs/survey_pars/survey_pars_2_tracer_2_redshift.yaml")
     k_array_file = "/home/joeadamo/Research/Data/SPHEREx-Data/training_set_eft_high_boss_cut/kbins.npz"

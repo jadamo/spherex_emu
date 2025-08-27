@@ -1,8 +1,8 @@
 import torch
 import pytest
 import numpy as np
-from spherex_emu.emulator import ps_emulator
-from spherex_emu.utils import *
+from mentat_lss.emulator import ps_emulator
+from mentat_lss.utils import *
 
 def test_normalize_cosmo_params():
     test_tensor = (torch.rand(10*10) * 100) - 50

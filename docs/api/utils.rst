@@ -3,7 +3,7 @@
 Util Functions
 ==============
 
-Miscelanious functions used by spherex_emu
+Miscelanious functions used by mentat-lss
 
-.. automodule:: utils
+.. automodule:: mentat_lss.utils
    :members:

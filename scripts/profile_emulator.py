@@ -1,9 +1,9 @@
-from spherex_emu.emulator import pk_emulator
+from mentat_lss.emulator import pk_emulator
 import math, time
 import torch
 
 import ps_theory_calculator
-from spherex_emu.utils import *
+from mentat_lss.utils import *
 
 net_config_file = "../configs/network_pars/network_pars_2_sample_2_redshift.yaml"
 cosmo_config_file = "../configs/cosmo_pars/eft_profile.yaml"

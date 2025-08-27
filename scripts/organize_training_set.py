@@ -8,8 +8,7 @@ from multiprocessing import Pool
 from itertools import repeat
 
 import ps_theory_calculator
-from spherex_emu.utils import *
-import spherex_emu.filepaths as filepaths 
+from mentat_lss.utils import *
 
 #-------------------------------------------------------------------
 # GLOBAL VARIABLES

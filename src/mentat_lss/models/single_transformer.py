@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-import spherex_emu.models.blocks as blocks
+import mentat_lss.models.blocks as blocks
 
 class single_transformer(nn.Module):
     """Class defining a single independent transformer network"""

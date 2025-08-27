@@ -5,5 +5,5 @@ Training Loop Functions
 
 These functions are used to train the neural network
 
-.. automodule:: training_loops
+.. automodule:: mentat_lss.training_loops
    :members:

@@ -3,9 +3,9 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "spherex_emu"
-description = "package for emulating the galaxy power spectrum using neural networks"
-version = "0.9.2"
+name = "mentat-lss"
+description = "package for emulating galaxy power spectrum multipoles using neural networks"
+version = "0.9.3"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
@@ -15,10 +15,11 @@ requires-python = ">= 3.9"
 dependencies = [
     "setuptools",
     "build",
-    "numpy",
+    "numpy<2",
     "scipy",
     "torch",
     "pytest",
+    "tqdm",
     "pyyaml",
     "symbolic_pofk@git+https://github.com/DeaglanBartlett/symbolic_pofk.git"
 ]
@@ -27,4 +28,4 @@ dependencies = [
 where = ["src"]
 
 [project.urls]
-Homepage = "https://github.com/jadamo/spherex_emu"
+Homepage = "https://github.com/jadamo/mentat-lss"

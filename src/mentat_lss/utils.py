@@ -172,23 +172,29 @@ def make_hypersphere(priors:np.array, dim:int, N:int):
 def is_in_hypersphere(priors, params):
     """Returns whether or not the given params are within a hypersphere with edges defined by bounds"""
 
-    # convert params to lay within the unit sphere
-    if isinstance(params, torch.Tensor):
-        unit_params = torch.zeros_like(params)
-        calc_method = torch
-    elif isinstance(params, np.ndarray):
-        unit_params = np.zeros_like(params)
-        calc_method = np
+    if isinstance(priors, np.ndarray):
+        priors = torch.from_numpy(priors)
+    elif not isinstance(priors, torch.Tensor):
+        raise TypeError(f"priors must be either np array or torch Tensor, but is {type(priors)}")
 
-    for d in range(priors.shape[0]):
-        if len(params.shape) == 1:
+    if isinstance(params, np.ndarray):
+        params = torch.from_numpy(params)
+    elif not isinstance(params, torch.Tensor):
+        raise TypeError(f"params must be either np array or torch Tensor, but is {type(params)}")
+    unit_params = torch.zeros_like(params)
+
+    # convert params to lay within the unit sphere
+    if len(params.shape) == 1:
+        for d in range(priors.shape[0]):
             unit_params[d] = 2*(params[d] - priors[d,0]) / (priors[d,1] - priors[d,0]) - 1
-        elif len(params.shape) == 2:
+        r = torch.sqrt(torch.sum(unit_params**2))
+
+    elif len(params.shape) == 2:
+        for d in range(priors.shape[0]):
             unit_params[:,d] = 2*(params[:,d] - priors[d,0]) / (priors[d,1] - priors[d,0]) - 1
-    
-    r = calc_method.sqrt(calc_method.sum(unit_params**2))
-    if r >= 1: return False, r
-    else:      return True, r
+        r = torch.sqrt(torch.sum(unit_params**2, dim=1))
+
+    return torch.lt(r, 1.0), r
 
 
 def organize_training_set(training_dir:str, train_frac:float, valid_frac:float, test_frac:float, 

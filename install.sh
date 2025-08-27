@@ -14,8 +14,8 @@ fi
 eval "$(conda shell.bash hook)"
 
 echo "Creating new anaconda enviornment..."
-conda create -n spherex_emu python=3.11
-conda activate spherex_emu
+conda create -n mentat_lss python=3.11
+conda activate mentat_lss
 
 # install the correct version of pytorch based on the device specifications 
 # (ex: is there a GPU? Is the device a M1/2/3 Macbook?)
@@ -34,9 +34,9 @@ fi
 # explicitely install some same package versions as the SPHEREx inference module to ensure code remains compatible
 pip install numpy==1.25.2
 pip install scipy==1.11.2
-# install spherex_emu itself
+# install mentat_lss itself
 pip install .
 
 conda deactivate
 
-echo "Succesfully installed spherex_emu!"
+echo "Succesfully installed mentat-lss!"
