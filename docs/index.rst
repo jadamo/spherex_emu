@@ -3,7 +3,7 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-spherex_emu documentation
+spherex_emu Documentation
 =========================
 
 Welcome to the spherex_emu documentation! Here you can find instructions for
@@ -16,4 +16,4 @@ how to install and use the code, as well as explore the package API.
    install.rst
    workflow.rst
    api/index.rst
-   examples/test_emulator.ipynb
+   tutorials/index.rst

@@ -52,20 +52,19 @@ The following is an example of such a file.
 
     # specifications are for each network - will be repeated for each sample / redshift bin
     galaxy_ps_emulator:
-    # mlp parameters
-    num_mlp_blocks      : 2
-    num_block_layers    : 5
-    use_skip_connection : True
+        # mlp parameters
+        num_mlp_blocks      : 2
+        num_block_layers    : 5
+        use_skip_connection : True
 
-    # transformer parameters
-    num_transformer_blocks : 2
-    split_dim              : 5
-    split_size             : 20
+        # transformer parameters
+        num_transformer_blocks : 2
+        split_dim              : 5
+        split_size             : 20
 
     # Training parameters
     num_epochs: 500
     galaxy_ps_learning_rate: 0.005
-    nw_ps_learning_rate : 0.0005
     batch_size: 1000
     training_set_fraction : 1.0
     early_stopping_epochs: 25
@@ -80,11 +79,11 @@ The following is an example of such a file.
     # NOTE: Small networks will possibly train faster on CPU!
     use_gpu : True
 
-Here are some important considerations before training:
-- You'll need to decide whether to try training your network on a CPU or GPU (assuming
-one is available to you). In general, networks with transformers train **significantly** faster on 
-GPUs, so we recommend you try training on GPUs whenever possible. By defualt, spherex_emu will attempt
-to use a GPU if it is available.
+Here are some important considerations to make before training:
+
+- You'll need to decide whether to try training your network on a CPU or GPU (assuming one is available to you). In general, networks with transformers train **significantly** faster on  GPUs, so we recommend you try training on GPUs whenever possible. By defualt, spherex_emu will attempt to use a GPU if it is available.
+- The specific binning information (num_zbins, num_ells, etc) must match those found in the training set. The code will throw an error on startup if they don't.
+- The above specifications are the optimized values found in PAPER_LINK_HERE. The optimal setup will potentially be different for your case, but these values should provide a good starting point.
 
 Once you have your configs all sorted. You can train you network using the following script,
 
@@ -107,7 +106,7 @@ Once you have your configs all sorted. You can train you network using the follo
     training_loops.train_on_single_device(emulator)
 
 We have also provided a more robust script in `scripts/train_emulator.py` that also
-handles training on multiple GPUs.
+handles training on multiple GPUs. Fore more details, see :doc:`tutorials/training`.
 
 During the actual training process, `spherex_emu` will loop through each subnet, each of which
 correspond to a single tracer / redshift bin. It will then print out the average training set and 
@@ -120,7 +119,7 @@ This will repeat until either the validation loss for all sub-nets hasn't improv
 Testing the Emulator
 --------------------
 
-We provide an example jupyter notebook for running various tests on your emulator :doc:`here <examples/test_emulator>`.
+We provide an example jupyter notebook for running various tests on your emulator :doc:`here <tutorials/test_emulator>`.
 
 Using the Emulator
 -------------------
