@@ -4,7 +4,8 @@ from scipy.special import lpmv
 from scipy.interpolate import InterpolatedUnivariateSpline, RectBivariateSpline
 from scipy.optimize import fsolve
 import itertools, math
-import symbolic_pofk.linear as linear
+
+import mentat_lss._vendor.symbolic_pofk.linear as linear
 from mentat_lss.cosmo_utils import LCDMCosmology, IRResum, get_log_extrap
 
 class analytic_eft_model():
@@ -27,6 +28,7 @@ class analytic_eft_model():
             redshift_list (list): list of effective redshifts in each bin
             ells (list): list of ell modes to calculate
             k (np.array): array of k-bins to calculate the multipoles with.
+            ndens (np.array): array of number densities (used for shotnoise terms). Should have shape (num_zbins, num_tracers)
         """
 
         self.redshift_list = redshift_list

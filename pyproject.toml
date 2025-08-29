@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mentat-lss"
 description = "package for emulating galaxy power spectrum multipoles using neural networks"
-version = "0.9.3"
+version = "0.9.4"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
@@ -21,7 +21,7 @@ dependencies = [
     "pytest",
     "tqdm",
     "pyyaml",
-    "symbolic_pofk@git+https://github.com/DeaglanBartlett/symbolic_pofk.git"
+    "colossus"
 ]
 
 [tool.setuptools.packages.find]

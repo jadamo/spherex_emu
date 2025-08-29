@@ -128,9 +128,25 @@ Finally, once you are sure your emulator works, you can generate power spectrum 
 
 .. code-block:: python
     
-    emulator = pk_emulator(emu_dir, "eval")
-    pk_predict = pk_emulator.get_power_spectra(input_params)
+    emulator = ps_emulator(emu_dir, "eval")
+    pk_predict = ps_emulator.get_power_spectra(input_params)
 
 which will output power spectrum multipoles as a numpy array with shape 
-``[nps, nz, nk, nl]``. You can then hook up this method to your favorite MCMC sampler
+``[nps, nz, nk, nl]``. You can access the required input parameters (and their order) with,
+
+.. code-block:: python
+
+    # REQUIRED: input_params should be in the same order as emu_params
+    emu_params = ps_emulator.get_required_emu_params()
+    # OPTIONAL: should be concatenated at the end of emu_params
+    analytic_params = ps_emulator.get_required_analytic_parameters()
+
+Note that if you include analytic_params, the code will compute the EFT counterterms and
+stochastic contributions. Under the hood, the code calls symbolic_pofk_
+to quickly calculate the linear matter power spectrum.
+
+.. _symbolic_pofk: https://github.com/DeaglanBartlett/symbolic_pofk
+
+You can then hook up this method to your favorite MCMC sampler
 to run some likelihood analyses!
+

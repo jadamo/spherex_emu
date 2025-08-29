@@ -15,24 +15,39 @@ This package works on both Linux and MacOS (intel and arm64) platforms, and has 
 
 1. To enable GPU functionality for network training, make sure you have CUDA installed (or python 3.8+ if using apple silicon).
 2. You will need some way to generate galaxy power spectrum multipoles to generate training sets. One option is to download and install both [ps_1loop](https://github.com/archaeo-pteryx/ps_1loop) and [ps_theory_calculator](https://github.com/archaeo-pteryx/ps_theory_calculator). You might need to request access to those repositories, in which case you can contact Yosuke Kobayashi (yosukekobayashi@arizona.edu). We have also included a version of [FAST-PT](https://github.com/jablazek/FAST-PT) to satisfy this requirnment.
-3. Download this repository to your location of choice.
 
-### Automated Install (recommended)
+### From pip (recommended)
 
-In the base directory, simply run `install.sh` in the terminal. This script will create a new anaconda enviornment, fetch the corresponding version of PyTorch, and install the code, all automatically.
+In a clean enviornment, simply run,
 
-### Manual Install 
+`pip install mentat-lss`
 
-1. install the corresponding [PyTorch version](https://pytorch.org/get-started/locally/). If your machine doesn't have a GPU, you can skip this step.
-2. In the base directory, run `python -m pip install .`, which should install this repository as a package and all required dependencies.
+Alternatively, if you would like to install from source (for example, you want to add to the package, or would like
+easier access to the provided config files)), you can do so in two different ways.
+
+### From source (automatic)
+
+1. Download this repository to your location of choice.
+2. In the base directory, simply run `install.sh` in the terminal. This script will create a new anaconda enviornment, fetch the corresponding version of PyTorch, and install the code, all automatically.
+
+### From source (manual)
+
+1. Download this repository to your location of choice.
+2. install the corresponding [PyTorch version](https://pytorch.org/get-started/locally/). If your machine doesn't have a GPU, you can skip this step.
+3. In the base directory, run `python -m pip install .`, which should install this repository as a package and all required dependencies.
 
 To run the provided unit-tests, you can run the following command in the base repo directory,
 
 `python -m pytest tests`
 
-## Running the code
+## Using MENTAT-LSS
 
-Check out our [ReadTheDocs Page](https://spherex-emu.readthedocs.io/en/latest/workflow.html).
+Check out our [ReadTheDocs Page](https://spherex-emu.readthedocs.io/en/latest/workflow.html) on a typical workflow process.
+
+If you use this package for your research, please cite the following papers:
+
+- Adamo et al (2025, in prep)
+- symbolic_pofk ([Bartlett et al (2024)](https://ui.adsabs.harvard.edu/abs/2024A%26A...686A.209B/abstract))
 
 ## Authors
 
