@@ -21,7 +21,7 @@ dependencies = [
     "pytest",
     "tqdm",
     "pyyaml",
-    "symbolic_pofk@git+https://github.com/DeaglanBartlett/symbolic_pofk.git"
+    "colossus"
 ]
 
 [tool.setuptools.packages.find]

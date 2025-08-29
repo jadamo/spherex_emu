@@ -1,8 +1,21 @@
 # import ps_theory_calculator
-# import numpy as np
-# import yaml, os
+import numpy as np
+import yaml, os
+import pytest
 
-# from mentat_lss.utils import *
+from mentat_lss.emulator import ps_emulator
+import mentat_lss._vendor.symbolic_pofk.linear as linear
+from mentat_lss.models.analytic_terms import analytic_eft_model
+
+# @pytest.mark.parametrize("P_shot, num_tracers, num_zbins, kbins, expected", [
+#     (0., 1, 1, np.linspace(0.01, 0.2, 25), np.zeros(25))
+# ])
+# def test_shotnoise_term(P_shot, num_tracers, num_zbins, kbins, expected):
+#     redshift_list = [0]*num_zbins
+#     ndens = np.random.rand(num_zbins, num_tracers)
+
+#     model = analytic_eft_model(num_tracers, redshift_list, [0,2], kbins, ndens)
+#     emu_params = []
 
 # def test_ps_multi_sample_multi_redshift():
 
