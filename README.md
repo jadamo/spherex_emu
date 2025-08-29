@@ -44,6 +44,11 @@ To run the provided unit-tests, you can run the following command in the base re
 
 Check out our [ReadTheDocs Page](https://spherex-emu.readthedocs.io/en/latest/workflow.html) on a typical workflow process.
 
+If you use this package for your research, please cite the following papers:
+
+- Adamo et al (2025, in prep)
+- symbolic_pofk ([Bartlett et al (2024)](https://ui.adsabs.harvard.edu/abs/2024A%26A...686A.209B/abstract))
+
 ## Authors
 
 - Joe Adamo (primary) (jadamo@arizona.edu)
