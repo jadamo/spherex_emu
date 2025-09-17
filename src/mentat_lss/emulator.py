@@ -93,7 +93,6 @@ class ps_emulator():
         output_norm_data = torch.load(os.path.join(path,"output_normalizations.pt"), 
                                       map_location=self.device, weights_only=True)
         self.ps_fid        = output_norm_data[0]
-        self.ps_nw_fid     = output_norm_data[1]
         self.invcov_full   = output_norm_data[2]
         self.invcov_blocks = output_norm_data[3]
         self.sqrt_eigvals  = output_norm_data[4]
@@ -478,7 +477,7 @@ class ps_emulator():
             yaml.dump(self.get_required_emu_parameters(), outfile, sort_keys=False, default_flow_style=False)
 
         # data related to output normalization
-        output_files = [self.ps_fid, self.ps_nw_fid, self.invcov_full, self.invcov_blocks, self.sqrt_eigvals, self.Q]
+        output_files = [self.ps_fid, self.invcov_full, self.invcov_blocks, self.sqrt_eigvals, self.Q]
         torch.save(output_files, os.path.join(save_dir, "output_normalizations.pt"))
 
         # Finally, the actual model parameters
